@@ -1,7 +1,7 @@
 const CELL = 48;
 const WALL = 5;
 
-// Темы по сложности
+// Ночные темы по сложности
 const THEMES = {
   easy: {
     bg:       '#04100a',
@@ -23,6 +23,31 @@ const THEMES = {
     wall:     '#5a1a1a',
     wallEdge: '#aa3a3a',
     fog:      'rgba(12,4,4,0.86)',
+  },
+};
+
+// Дневные темы — светлые и контрастные
+const DAY_THEMES = {
+  easy: {
+    bg:       '#b8d4b0',
+    floor:    '#c8e4c0',
+    wall:     '#3a6040',
+    wallEdge: '#5a9060',
+    fog:      null,
+  },
+  medium: {
+    bg:       '#b0b8d0',
+    floor:    '#c0c8e0',
+    wall:     '#3a3a6a',
+    wallEdge: '#5a5a9a',
+    fog:      null,
+  },
+  hard: {
+    bg:       '#d0b0b0',
+    floor:    '#e0c0c0',
+    wall:     '#6a2a2a',
+    wallEdge: '#9a4a4a',
+    fog:      null,
   },
 };
 
@@ -51,13 +76,24 @@ export class Renderer {
     this.mmCtx  = minimapCanvas.getContext('2d');
     this.fogCanvas = document.createElement('canvas');
     this.fogCtx    = this.fogCanvas.getContext('2d');
-    this.theme  = THEMES.medium;
+    this.theme   = THEMES.medium;
+    this.dayMode = false;
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
 
   setTheme(difficulty) {
-    this.theme = THEMES[difficulty] || THEMES.medium;
+    this._difficulty = difficulty || 'medium';
+    this.theme = this.dayMode
+      ? (DAY_THEMES[this._difficulty] || DAY_THEMES.medium)
+      : (THEMES[this._difficulty]     || THEMES.medium);
+  }
+
+  setDayMode(enabled) {
+    this.dayMode = enabled;
+    this.theme = enabled
+      ? (DAY_THEMES[this._difficulty || 'medium'] || DAY_THEMES.medium)
+      : (THEMES[this._difficulty || 'medium']     || THEMES.medium);
   }
 
   resize() {
@@ -88,15 +124,15 @@ export class Renderer {
     this.drawExit(ctx, state);
     this.drawPathHint(ctx, pathHint);
     this.drawNoiseEffects(ctx, noiseEffects);
-    // Конус фонарика (под стенами, над полом)
-    this.drawFlashlightBeams(ctx, state);
+    // Конус фонарика только в ночном режиме
+    if (!this.dayMode) this.drawFlashlightBeams(ctx, state);
     this.drawWalls(ctx, state);
     this.drawPlayers(ctx, state, myId);
     this.drawManiac(ctx, state);
 
     ctx.restore();
 
-    this.drawFogOfWar(state, myId, camX, camY);
+    if (!this.dayMode) this.drawFogOfWar(state, myId, camX, camY);
     this.drawMinimap(state, myId);
   }
 

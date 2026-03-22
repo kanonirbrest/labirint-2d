@@ -146,6 +146,40 @@
 
     .waiting-hint { font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.6; }
 
+    /* ────── ДЕНЬ/НОЧЬ ────── */
+    .daynight-row {
+      display: flex; gap: 10px;
+    }
+    .daynight-btn {
+      flex: 1; border-radius: 14px; padding: 14px 8px;
+      text-align: center; cursor: pointer;
+      border: 2px solid var(--border);
+      background: var(--surface);
+      transition: transform 0.12s, border-color 0.2s, box-shadow 0.2s;
+      user-select: none; -webkit-tap-highlight-color: transparent;
+    }
+    .daynight-btn:active { transform: scale(0.96); }
+    .daynight-btn.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 16px rgba(108,99,255,0.4);
+    }
+    .daynight-btn[data-mode="day"].selected {
+      border-color: #ffd54f;
+      box-shadow: 0 0 16px rgba(255,213,79,0.4);
+    }
+    .daynight-icon  { font-size: 2rem; display: block; margin-bottom: 6px; }
+    .daynight-name  { font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; }
+    .daynight-desc  { font-size: 0.65rem; color: var(--text-dim); line-height: 1.5; }
+
+    /* Кнопка день/ночь в HUD */
+    #hud-daynight {
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 2px 7px;
+      font-size: 1rem; cursor: pointer; color: var(--text);
+      flex-shrink: 0;
+    }
+    #hud-daynight:active { opacity: 0.7; }
+
     /* ────── ИГРА ────── */
     #screen-game { padding: 0; }
 
@@ -380,6 +414,22 @@
     </div>
   </div>
 
+  <div style="width:100%;max-width:380px;">
+    <div class="diff-title" style="text-align:center;margin-bottom:10px;">Режим освещения</div>
+    <div class="daynight-row">
+      <div class="daynight-btn selected" data-mode="night">
+        <span class="daynight-icon">🌙</span>
+        <div class="daynight-name">Ночь</div>
+        <div class="daynight-desc">Фонарик, туман,<br/>ограниченный обзор</div>
+      </div>
+      <div class="daynight-btn" data-mode="day">
+        <span class="daynight-icon">☀️</span>
+        <div class="daynight-name">День</div>
+        <div class="daynight-desc">Всё видно,<br/>маньяк тоже</div>
+      </div>
+    </div>
+  </div>
+
   <button class="btn btn-secondary" id="btn-back-to-lobby" style="max-width:200px;">← Назад</button>
 </div>
 
@@ -408,6 +458,7 @@
       <div class="hud-dot" style="background:var(--p2)"></div>
       <div class="hud-name" id="hud-p2-name">Игрок 2</div>
     </div>
+    <button id="hud-daynight" title="День / Ночь">🌙</button>
   </div>
 
   <canvas id="minimap" width="110" height="110"></canvas>

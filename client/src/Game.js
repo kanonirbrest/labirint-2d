@@ -67,6 +67,10 @@ export class Game {
     this.startLoop();
   }
 
+  setDayMode(enabled) {
+    this.renderer.setDayMode(enabled);
+  }
+
   stop() {
     cancelAnimationFrame(this.rafId);
     this.rafId = null;

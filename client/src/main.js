@@ -30,6 +30,7 @@ showScreen('lobby');
 // ─── Состояние ─────────────────────────────────────────────────
 let game = null;
 let selectedDifficulty = 'medium';
+let selectedDayMode = false; // false = ночь, true = день
 
 const canvasEl  = document.getElementById('game-canvas');
 const minimapEl = document.getElementById('minimap');
@@ -56,6 +57,22 @@ document.querySelectorAll('.diff-card').forEach((card) => {
     selectedDifficulty = card.dataset.diff;
     connectAndDo(() => send('createRoom', { username: defaultName, difficulty: selectedDifficulty }));
   });
+});
+
+// ─── Выбор день/ночь (на экране сложности) ─────────────────────
+document.querySelectorAll('.daynight-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.daynight-btn').forEach((b) => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedDayMode = btn.dataset.mode === 'day';
+  });
+});
+
+// ─── Кнопка день/ночь в HUD ────────────────────────────────────
+document.getElementById('hud-daynight').addEventListener('click', () => {
+  selectedDayMode = !selectedDayMode;
+  document.getElementById('hud-daynight').textContent = selectedDayMode ? '☀️' : '🌙';
+  game?.setDayMode(selectedDayMode);
 });
 
 document.getElementById('btn-back-to-lobby').addEventListener('click', () => {
@@ -140,6 +157,8 @@ function setupSocketHandlers() {
 
     if (!game) game = new Game(canvasEl, minimapEl);
     game.start(data, myId);
+    game.setDayMode(selectedDayMode);
+    document.getElementById('hud-daynight').textContent = selectedDayMode ? '☀️' : '🌙';
     updateHUD(data.players);
 
     const diffLabels = { easy: '🌿 Простой', medium: '🏚️ Средний', hard: '🩸 Сложный' };
