@@ -7,7 +7,7 @@ const DIFFICULTY = {
     tickMs: 100,
     maniacMoveTicks: 4,    // 400ms — маньяк МЕДЛЕННЕЕ игрока
     playerMoveCooldown: 280,
-    noiseRadius: 9,
+    noiseRadius: 11,
     noiseCooldown: 2000,
     chaseDuration: 5000,
   },
@@ -17,7 +17,7 @@ const DIFFICULTY = {
     tickMs: 100,
     maniacMoveTicks: 2,    // 200ms — маньяк в 1.4× быстрее
     playerMoveCooldown: 280,
-    noiseRadius: 8,
+    noiseRadius: 10,
     noiseCooldown: 4000,
     chaseDuration: 9000,
   },
@@ -27,7 +27,7 @@ const DIFFICULTY = {
     tickMs: 100,
     maniacMoveTicks: 1,    // 100ms — маньяк в 2.8× быстрее
     playerMoveCooldown: 280,
-    noiseRadius: 6,
+    noiseRadius: 8,
     noiseCooldown: 6000,
     chaseDuration: 14000,
   },
