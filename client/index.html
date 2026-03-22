@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Лабиринт: Побег</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111120;
+      --border: #2a2a4a;
+      --accent: #6c63ff;
+      --accent2: #ff6b6b;
+      --text: #e0e0f0;
+      --text-dim: #7070a0;
+      --p1: #4fc3f7;
+      --p2: #81c784;
+      --exit: #ffd54f;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    /* ────── ЭКРАНЫ ────── */
+    .screen {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px;
+      transition: opacity 0.3s;
+    }
+    .screen.hidden { opacity: 0; pointer-events: none; }
+
+    /* ────── ЛОББИ ────── */
+    #screen-lobby {
+      gap: 20px;
+      background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a0f 70%);
+    }
+
+    .logo {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      text-align: center;
+      line-height: 1.1;
+    }
+    .logo span { color: var(--accent2); }
+    .logo-sub {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 6px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .card h3 {
+      font-size: 0.75rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+    .btn-danger { background: var(--accent2); color: #fff; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .input-group { display: flex; gap: 8px; }
+    .input-group input {
+      flex: 1;
+      padding: 12px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 1rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      outline: none;
+    }
+    .input-group input::placeholder { letter-spacing: 0; text-transform: none; color: var(--text-dim); }
+    .input-group input:focus { border-color: var(--accent); }
+    .input-group .btn { width: auto; padding: 12px 18px; }
+
+    .error-msg {
+      font-size: 0.8rem;
+      color: var(--accent2);
+      text-align: center;
+      min-height: 18px;
+    }
+
+    /* ────── ОЖИДАНИЕ ────── */
+    #screen-waiting {
+      gap: 24px;
+      background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a0f 70%);
+    }
+    .room-code-display {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: 10px;
+      color: var(--exit);
+      text-align: center;
+      padding: 16px 24px;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+    }
+    .pulse-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+    .waiting-hint { font-size: 0.85rem; color: var(--text-dim); text-align: center; line-height: 1.6; }
+
+    /* ────── ИГРА ────── */
+    #screen-game { padding: 0; }
+
+    #game-canvas {
+      position: absolute; top: 0; left: 0;
+      image-rendering: pixelated;
+    }
+
+    /* HUD */
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px;
+      background: rgba(10,10,15,0.75);
+      backdrop-filter: blur(6px);
+      z-index: 10;
+      gap: 8px;
+    }
+    .hud-player {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.78rem;
+    }
+    .hud-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .hud-name { font-weight: 600; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hud-center { font-size: 0.72rem; color: var(--text-dim); }
+
+    /* Мини-карта */
+    #minimap {
+      position: fixed;
+      top: 44px; right: 10px;
+      z-index: 10;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      opacity: 0.85;
+    }
+
+    /* Управление */
+    #controls {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      display: flex; align-items: flex-end; justify-content: space-between;
+      padding: 12px 20px 20px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template: 'a b c' / 1fr 1fr 1fr;
+      gap: 4px;
+      pointer-events: all;
+    }
+    .dpad-btn {
+      width: 56px; height: 56px;
+      background: rgba(40,40,70,0.85);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+    .dpad-btn:active, .dpad-btn.pressed { background: rgba(108,99,255,0.5); }
+    .dpad-up    { grid-column: 2; grid-row: 1; }
+    .dpad-left  { grid-column: 1; grid-row: 2; }
+    .dpad-right { grid-column: 3; grid-row: 2; }
+    .dpad-down  { grid-column: 2; grid-row: 2; }
+    .dpad-space { grid-column: 2; grid-row: 2; pointer-events: none; visibility: hidden; }
+
+    .noise-btn {
+      pointer-events: all;
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ff9a00, #e52e71);
+      border: 3px solid rgba(255,255,255,0.25);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 0 20px rgba(229,46,113,0.4);
+      transition: transform 0.1s, box-shadow 0.1s, opacity 0.2s;
+      position: relative;
+    }
+    .noise-btn:active { transform: scale(0.93); }
+    .noise-btn.cooldown { opacity: 0.45; }
+    .noise-btn-label { font-size: 0.6rem; color: rgba(255,255,255,0.8); margin-top: 2px; font-weight: 600; }
+    .noise-cooldown-ring {
+      position: absolute; inset: -3px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+    }
+
+    /* ────── ФИНАЛЬНЫЙ ЭКРАН ────── */
+    #screen-gameover {
+      gap: 20px;
+      background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a0f 70%);
+    }
+    .gameover-icon { font-size: 5rem; }
+    .gameover-title { font-size: 2rem; font-weight: 800; text-align: center; }
+    .gameover-sub { font-size: 0.9rem; color: var(--text-dim); text-align: center; }
+    .vote-status { font-size: 0.8rem; color: var(--text-dim); text-align: center; }
+
+    /* ────── CANVAS полноэкранный ────── */
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- ЛОББИ -->
+<div id="screen-lobby" class="screen">
+  <div>
+    <div class="logo">🔦 Лабиринт<br/><span>Побег</span></div>
+    <div class="logo-sub">Кооперативный хоррор для двоих</div>
+  </div>
+
+  <div class="card">
+    <h3>Создать комнату</h3>
+    <button class="btn btn-primary" id="btn-create">Создать игру</button>
+  </div>
+
+  <div class="card">
+    <h3>Войти по коду</h3>
+    <div class="input-group">
+      <input type="text" id="room-code-input" maxlength="6" placeholder="XXXXXX" autocomplete="off" />
+      <button class="btn btn-secondary" id="btn-join">Войти</button>
+    </div>
+  </div>
+
+  <div class="error-msg" id="lobby-error"></div>
+</div>
+
+<!-- ОЖИДАНИЕ -->
+<div id="screen-waiting" class="screen hidden">
+  <div class="logo-sub" style="font-size:0.9rem;">Ждём второго игрока...</div>
+  <div class="room-code-display" id="display-room-code">------</div>
+  <div class="waiting-hint">
+    Поделитесь кодом с другом<br/>
+    <span class="pulse-dot"></span> Ожидание подключения
+  </div>
+  <button class="btn btn-secondary" id="btn-cancel-wait" style="max-width:200px;margin-top:10px;">Отмена</button>
+</div>
+
+<!-- ИГРА -->
+<div id="screen-game" class="screen hidden">
+  <canvas id="game-canvas"></canvas>
+
+  <div id="hud">
+    <div class="hud-player">
+      <div class="hud-dot" style="background:var(--p1)"></div>
+      <div class="hud-name" id="hud-p1-name">Игрок 1</div>
+    </div>
+    <div class="hud-center" id="hud-status">🚀 Побег начался!</div>
+    <div class="hud-player">
+      <div class="hud-dot" style="background:var(--p2)"></div>
+      <div class="hud-name" id="hud-p2-name">Игрок 2</div>
+    </div>
+  </div>
+
+  <canvas id="minimap" width="90" height="90"></canvas>
+
+  <div id="controls">
+    <div class="dpad" id="dpad">
+      <div class="dpad-btn dpad-up"    data-dir="up">▲</div>
+      <div class="dpad-btn dpad-left"  data-dir="left">◀</div>
+      <div class="dpad-btn dpad-space"></div>
+      <div class="dpad-btn dpad-right" data-dir="right">▶</div>
+      <div class="dpad-btn dpad-down"  data-dir="down">▼</div>
+    </div>
+    <button class="noise-btn" id="noise-btn">
+      📢
+      <div class="noise-btn-label">ШУМ</div>
+    </button>
+  </div>
+</div>
+
+<!-- ФИНАЛ -->
+<div id="screen-gameover" class="screen hidden">
+  <div class="gameover-icon" id="gameover-icon">😱</div>
+  <div class="gameover-title" id="gameover-title">Пойманы!</div>
+  <div class="gameover-sub" id="gameover-sub">Маньяк вас настиг...</div>
+  <div class="vote-status" id="vote-status"></div>
+  <button class="btn btn-primary" id="btn-restart" style="max-width:260px;">Играть снова</button>
+  <button class="btn btn-secondary" id="btn-lobby" style="max-width:260px;">В главное меню</button>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
