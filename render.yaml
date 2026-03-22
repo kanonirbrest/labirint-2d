@@ -3,7 +3,7 @@ services:
   - type: web
     name: labirint-server
     env: node
-    plan: free
+    plan: starter
     rootDir: server
     buildCommand: npm install
     startCommand: node src/index.js
