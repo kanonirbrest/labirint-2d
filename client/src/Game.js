@@ -1,5 +1,6 @@
 import { Renderer, CELL } from './Renderer.js';
 import { send } from './socket.js';
+import { AudioManager } from './AudioManager.js';
 
 const MOVE_INTERVAL = 280; // мс — порог для кнопок (синхронизирован с сервером)
 const NOISE_COOLDOWN = 4000;
@@ -8,6 +9,7 @@ const LERP_K = 0.25; // коэффициент интерполяции за к�
 export class Game {
   constructor(canvasEl, minimapEl) {
     this.renderer = new Renderer(canvasEl, minimapEl);
+    this.audio    = new AudioManager();
     this.state = null;
     this.myId = null;
     this.noiseEffects = [];
@@ -65,6 +67,7 @@ export class Game {
     this.pathHint = null;
     this.maniacSpeech = null;
     this._startPathHintTimer();
+    this.audio.startAmbient();
     this.updateNoiseBtn();
     this.startLoop();
   }
@@ -80,7 +83,15 @@ export class Game {
       clearInterval(this.pathHintInterval);
       this.pathHintInterval = null;
     }
+    this.audio.stop();
   }
+
+  toggleMute() {
+    return this.audio.toggleMute();
+  }
+
+  playWin()  { this.audio.playWin(); }
+  playLose() { this.audio.playLose(); }
 
   _startPathHintTimer() {
     if (this.pathHintInterval) clearInterval(this.pathHintInterval);
@@ -151,6 +162,9 @@ export class Game {
       ];
       const text = phrases[Math.floor(Math.random() * phrases.length)];
       this.maniacSpeech = { text, createdAt: Date.now(), duration: 3000 };
+      this.audio.playManiacHear();
+      // Небольшая задержка чтобы звук не перекрывал эффект шума
+      setTimeout(() => this.audio.speakManiac(text), 400);
     }
   }
 
@@ -197,6 +211,12 @@ export class Game {
       this.lastMoveSent = now;
       if (this.myId && this.state?.players[this.myId])
         this.state.players[this.myId].lastDir = this.heldDir;
+      this.audio.playStep();
+    }
+
+    // Сердцебиение когда маньяк близко
+    if (this.state?.maniac && this.myId) {
+      this.audio.tickHeartbeat(this.state.maniac, this.state.players[this.myId]);
     }
 
     // Обновить кнопку шума (cooldown)
@@ -282,6 +302,8 @@ export class Game {
   triggerNoise() {
     const now = Date.now();
     if (now - this.lastNoiseSent < NOISE_COOLDOWN) return;
+    this.audio.resume();
+    this.audio.playNoise();
     send('makeNoise');
     this.lastNoiseSent = now;
     this.updateNoiseBtn();

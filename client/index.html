@@ -179,6 +179,13 @@
       flex-shrink: 0;
     }
     #hud-daynight:active { opacity: 0.7; }
+    #hud-mute {
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 2px 7px;
+      font-size: 1rem; cursor: pointer; color: var(--text);
+      flex-shrink: 0;
+    }
+    #hud-mute:active { opacity: 0.7; }
 
     /* ────── ИГРА ────── */
     #screen-game { padding: 0; }
@@ -459,6 +466,7 @@
       <div class="hud-name" id="hud-p2-name">Игрок 2</div>
     </div>
     <button id="hud-daynight" title="День / Ночь">🌙</button>
+    <button id="hud-mute" title="Звук вкл/выкл">🔊</button>
   </div>
 
   <canvas id="minimap" width="110" height="110"></canvas>

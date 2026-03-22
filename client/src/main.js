@@ -68,6 +68,12 @@ document.querySelectorAll('.daynight-btn').forEach((btn) => {
   });
 });
 
+// ─── Кнопка mute в HUD ─────────────────────────────────────────
+document.getElementById('hud-mute').addEventListener('click', () => {
+  const muted = game?.toggleMute();
+  document.getElementById('hud-mute').textContent = muted ? '🔇' : '🔊';
+});
+
 // ─── Кнопка день/ночь в HUD ────────────────────────────────────
 document.getElementById('hud-daynight').addEventListener('click', () => {
   selectedDayMode = !selectedDayMode;
@@ -183,8 +189,8 @@ function setupSocketHandlers() {
   });
 
   on('gameOver', ({ won }) => {
-    game?.stop();
-    showGameOver(won);
+    if (won) game?.playWin(); else game?.playLose();
+    setTimeout(() => { game?.stop(); showGameOver(won); }, 800);
   });
 
   on('partnerDisconnected', () => {
