@@ -34,11 +34,11 @@ function cleanupRoom(roomCode) {
 io.on('connection', (socket) => {
   console.log(`[+] connected: ${socket.id}`);
 
-  socket.on('createRoom', ({ username }) => {
+  socket.on('createRoom', ({ username, difficulty }) => {
     let roomCode;
     do { roomCode = generateRoomCode(); } while (rooms.has(roomCode));
 
-    const room = new GameRoom(roomCode, io);
+    const room = new GameRoom(roomCode, io, difficulty || 'medium');
     rooms.set(roomCode, room);
 
     socket.join(roomCode);

@@ -56,6 +56,7 @@ export class Game {
     m.vx = m.x * CELL + CELL / 2;
     m.vy = m.y * CELL + CELL / 2;
 
+    this.renderer.setTheme(gameStartData.difficulty || 'medium');
     this.updateNoiseBtn();
     this.startLoop();
   }

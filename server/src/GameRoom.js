@@ -1,20 +1,45 @@
 import { generateMaze, findPath, distance } from './MazeGenerator.js';
 
-const MAZE_W = 15;
-const MAZE_H = 15;
-const TICK_MS = 100;
-const MANIAC_MOVE_TICKS = 2;       // маньяк двигается каждые 200мс
-const PLAYER_MOVE_COOLDOWN = 280;  // мс между шагами игрока
-const NOISE_RADIUS = 7;            // радиус слуха маньяка в клетках
-const NOISE_COOLDOWN = 4000;       // мс перезарядка шума у игрока
-const CHASE_DURATION = 9000;       // мс погони после услышанного шума
-const RESTART_TIMEOUT = 10000;     // мс ожидания второго голоса за рестарт
+const DIFFICULTY = {
+  easy: {
+    mazeW: 9, mazeH: 9,
+    tickMs: 100,
+    maniacMoveTicks: 4,      // 400ms — маньяк МЕДЛЕННЕЕ игрока (280ms)
+    playerMoveCooldown: 280,
+    noiseRadius: 10,
+    noiseCooldown: 2000,
+    chaseDuration: 5000,
+  },
+  medium: {
+    mazeW: 13, mazeH: 13,
+    tickMs: 100,
+    maniacMoveTicks: 2,      // 200ms — маньяк в 1.4× быстрее
+    playerMoveCooldown: 280,
+    noiseRadius: 7,
+    noiseCooldown: 4000,
+    chaseDuration: 9000,
+  },
+  hard: {
+    mazeW: 19, mazeH: 19,
+    tickMs: 100,
+    maniacMoveTicks: 1,      // 100ms — маньяк в 2.8× быстрее (страшно!)
+    playerMoveCooldown: 280,
+    noiseRadius: 5,
+    noiseCooldown: 6000,
+    chaseDuration: 13000,
+  },
+};
+
+const RESTART_TIMEOUT = 10000;
 
 export class GameRoom {
-  constructor(roomCode, io) {
+  constructor(roomCode, io, difficulty = 'medium') {
     this.roomCode = roomCode;
     this.io = io;
-    this.players = new Map(); // socketId -> playerData
+    this.difficulty = DIFFICULTY[difficulty] ? difficulty : 'medium';
+    this.cfg = DIFFICULTY[this.difficulty];
+
+    this.players = new Map();
     this.gameState = 'waiting';
     this.maze = null;
     this.exit = null;
@@ -27,9 +52,10 @@ export class GameRoom {
 
   addPlayer(socket, username) {
     const index = this.players.size;
+    const { mazeW, mazeH } = this.cfg;
     const spawns = [
       { x: 1, y: 1 },
-      { x: MAZE_W - 2, y: MAZE_H - 2 },
+      { x: mazeW - 2, y: mazeH - 2 },
     ];
 
     this.players.set(socket.id, {
@@ -62,13 +88,8 @@ export class GameRoom {
     if (this.players.size === 0) this.stopLoop();
   }
 
-  isEmpty() {
-    return this.players.size === 0;
-  }
-
-  isFull() {
-    return this.players.size >= 2;
-  }
+  isEmpty() { return this.players.size === 0; }
+  isFull()  { return this.players.size >= 2; }
 
   destroy() {
     this.stopLoop();
@@ -76,15 +97,13 @@ export class GameRoom {
   }
 
   startGame() {
-    this.maze = generateMaze(MAZE_W, MAZE_H);
+    const { mazeW, mazeH } = this.cfg;
+    this.maze = generateMaze(mazeW, mazeH);
 
-    // Выход — правая сторона, середина
-    this.exit = { x: MAZE_W - 1, y: Math.floor(MAZE_H / 2) };
-    // Убираем восточную стену у выходной клетки
+    this.exit = { x: mazeW - 1, y: Math.floor(mazeH / 2) };
     this.maze[this.exit.y][this.exit.x].e = false;
 
-    // Сброс позиций игроков
-    const spawns = [{ x: 1, y: 1 }, { x: MAZE_W - 2, y: MAZE_H - 2 }];
+    const spawns = [{ x: 1, y: 1 }, { x: mazeW - 2, y: mazeH - 2 }];
     let i = 0;
     for (const player of this.players.values()) {
       player.x = spawns[i].x;
@@ -96,9 +115,9 @@ export class GameRoom {
     }
 
     this.maniac = {
-      x: Math.floor(MAZE_W / 2),
-      y: Math.floor(MAZE_H / 2),
-      state: 'searching', // searching | chasing
+      x: Math.floor(mazeW / 2),
+      y: Math.floor(mazeH / 2),
+      state: 'searching',
       targetX: null,
       targetY: null,
       chaseExpiry: null,
@@ -108,20 +127,20 @@ export class GameRoom {
     this.tickCount = 0;
     this.restartVotes.clear();
 
-    const initData = {
+    this.io.to(this.roomCode).emit('gameStart', {
       maze: this.maze,
-      mazeWidth: MAZE_W,
-      mazeHeight: MAZE_H,
+      mazeWidth: mazeW,
+      mazeHeight: mazeH,
       exit: this.exit,
       players: this.serializePlayers(),
       maniac: this.serializeManiac(),
-      noiseRadius: NOISE_RADIUS,
-      noiseCooldown: NOISE_COOLDOWN,
-    };
+      noiseRadius: this.cfg.noiseRadius,
+      noiseCooldown: this.cfg.noiseCooldown,
+      difficulty: this.difficulty,
+    });
 
-    this.io.to(this.roomCode).emit('gameStart', initData);
     this.stopLoop();
-    this.intervalId = setInterval(() => this.tick(), TICK_MS);
+    this.intervalId = setInterval(() => this.tick(), this.cfg.tickMs);
   }
 
   stopLoop() {
@@ -135,11 +154,10 @@ export class GameRoom {
     if (this.gameState !== 'playing') return;
     this.tickCount++;
 
-    if (this.tickCount % MANIAC_MOVE_TICKS === 0) {
+    if (this.tickCount % this.cfg.maniacMoveTicks === 0) {
       this.moveManiac();
     }
 
-    // Проверка поимки
     for (const player of this.players.values()) {
       if (!player.escaped && player.x === this.maniac.x && player.y === this.maniac.y) {
         this.endGame(false);
@@ -147,9 +165,7 @@ export class GameRoom {
       }
     }
 
-    // Проверка победы
-    const allEscaped = [...this.players.values()].every((p) => p.escaped);
-    if (allEscaped) {
+    if ([...this.players.values()].every((p) => p.escaped)) {
       this.endGame(true);
       return;
     }
@@ -159,8 +175,8 @@ export class GameRoom {
 
   moveManiac() {
     const now = Date.now();
+    const { mazeW, mazeH } = this.cfg;
 
-    // Снять состояние погони если время истекло
     if (this.maniac.state === 'chasing' && this.maniac.chaseExpiry && now > this.maniac.chaseExpiry) {
       this.maniac.state = 'searching';
       this.maniac.targetX = null;
@@ -178,7 +194,6 @@ export class GameRoom {
         this.maniac.x = path[1].x;
         this.maniac.y = path[1].y;
       } else {
-        // Достиг цели — переходит в блуждание
         this.maniac.state = 'searching';
         this.maniac.targetX = null;
         this.maniac.targetY = null;
@@ -190,17 +205,17 @@ export class GameRoom {
 
   wander() {
     const { x, y } = this.maniac;
+    const { mazeW, mazeH } = this.cfg;
     const cell = this.maze[y][x];
     const dirs = [
       { dx: 0, dy: -1, wall: 'n' },
-      { dx: 1, dy: 0, wall: 'e' },
-      { dx: 0, dy: 1, wall: 's' },
+      { dx: 1, dy: 0,  wall: 'e' },
+      { dx: 0, dy: 1,  wall: 's' },
       { dx: -1, dy: 0, wall: 'w' },
     ].filter(({ wall, dx, dy }) => {
       if (cell[wall]) return false;
-      const nx = x + dx;
-      const ny = y + dy;
-      return nx >= 0 && nx < MAZE_W && ny >= 0 && ny < MAZE_H;
+      const nx = x + dx, ny = y + dy;
+      return nx >= 0 && nx < mazeW && ny >= 0 && ny < mazeH;
     });
 
     if (dirs.length > 0) {
@@ -216,44 +231,39 @@ export class GameRoom {
     if (!player || player.escaped) return;
 
     const now = Date.now();
-    if (now - player.lastMoveTime < PLAYER_MOVE_COOLDOWN) return;
+    if (now - player.lastMoveTime < this.cfg.playerMoveCooldown) return;
 
+    const { mazeW, mazeH } = this.cfg;
     const deltas = {
-      up:    { dx: 0, dy: -1, wall: 'n' },
-      right: { dx: 1, dy: 0,  wall: 'e' },
-      down:  { dx: 0, dy: 1,  wall: 's' },
-      left:  { dx: -1, dy: 0, wall: 'w' },
+      up:    { dx: 0,  dy: -1, wall: 'n' },
+      right: { dx: 1,  dy: 0,  wall: 'e' },
+      down:  { dx: 0,  dy: 1,  wall: 's' },
+      left:  { dx: -1, dy: 0,  wall: 'w' },
     };
 
     const delta = deltas[direction];
     if (!delta) return;
 
     const cell = this.maze[player.y][player.x];
-    if (cell[delta.wall]) return; // стена
+    if (cell[delta.wall]) return;
 
     const nx = player.x + delta.dx;
     const ny = player.y + delta.dy;
 
-    // Выход через правую стену выходной клетки
-    if (nx >= MAZE_W && player.x === this.exit.x && player.y === this.exit.y) {
+    if (nx >= mazeW && player.x === this.exit.x && player.y === this.exit.y) {
       player.escaped = true;
       player.lastMoveTime = now;
       this.io.to(this.roomCode).emit('playerEscaped', { playerId: socketId });
       return;
     }
 
-    if (nx < 0 || nx >= MAZE_W || ny < 0 || ny >= MAZE_H) return;
+    if (nx < 0 || nx >= mazeW || ny < 0 || ny >= mazeH) return;
 
     player.x = nx;
     player.y = ny;
     player.lastMoveTime = now;
 
-    // Телеграф: мгновенное обновление позиции этого игрока
-    this.io.to(this.roomCode).emit('playerMoved', {
-      playerId: socketId,
-      x: player.x,
-      y: player.y,
-    });
+    this.io.to(this.roomCode).emit('playerMoved', { playerId: socketId, x: player.x, y: player.y });
   }
 
   handleNoise(socketId) {
@@ -264,16 +274,16 @@ export class GameRoom {
     const now = Date.now();
     if (now < player.noiseCooldownEnd) return;
 
-    player.noiseCooldownEnd = now + NOISE_COOLDOWN;
+    player.noiseCooldownEnd = now + this.cfg.noiseCooldown;
 
     const dist = distance(player, this.maniac);
-    const heard = dist <= NOISE_RADIUS;
+    const heard = dist <= this.cfg.noiseRadius;
 
     this.io.to(this.roomCode).emit('noiseEvent', {
       playerId: socketId,
       x: player.x,
       y: player.y,
-      radius: NOISE_RADIUS,
+      radius: this.cfg.noiseRadius,
       heard,
     });
 
@@ -281,17 +291,16 @@ export class GameRoom {
       this.maniac.state = 'chasing';
       this.maniac.targetX = player.x;
       this.maniac.targetY = player.y;
-      this.maniac.chaseExpiry = now + CHASE_DURATION;
+      this.maniac.chaseExpiry = now + this.cfg.chaseDuration;
     }
   }
 
   handleRestartVote(socketId) {
-    if (this.gameState !== 'over' && this.gameState !== 'won' && this.gameState !== 'lost') return;
+    if (!['over','won','lost'].includes(this.gameState)) return;
     this.restartVotes.add(socketId);
 
     if (this.restartVotes.size === 1) {
       this.io.to(this.roomCode).emit('restartVote', { count: 1, needed: 2 });
-      // Если второй не проголосовал — сообщить об истечении
       this.restartTimeoutId = setTimeout(() => {
         this.restartVotes.clear();
         this.io.to(this.roomCode).emit('restartVote', { count: 0, needed: 2 });
@@ -326,10 +335,6 @@ export class GameRoom {
   }
 
   serializeManiac() {
-    return {
-      x: this.maniac.x,
-      y: this.maniac.y,
-      state: this.maniac.state,
-    };
+    return { x: this.maniac.x, y: this.maniac.y, state: this.maniac.state };
   }
 }

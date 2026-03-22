@@ -3,10 +3,7 @@ import { Game } from './Game.js';
 
 // ─── Telegram Web App ──────────────────────────────────────────
 const tg = window.Telegram?.WebApp;
-if (tg) {
-  tg.ready();
-  tg.expand();
-}
+if (tg) { tg.ready(); tg.expand(); }
 
 const tgUser = tg?.initDataUnsafe?.user;
 const defaultName = tgUser
@@ -15,10 +12,11 @@ const defaultName = tgUser
 
 // ─── Экраны ────────────────────────────────────────────────────
 const screens = {
-  lobby:    document.getElementById('screen-lobby'),
-  waiting:  document.getElementById('screen-waiting'),
-  game:     document.getElementById('screen-game'),
-  gameover: document.getElementById('screen-gameover'),
+  lobby:      document.getElementById('screen-lobby'),
+  difficulty: document.getElementById('screen-difficulty'),
+  waiting:    document.getElementById('screen-waiting'),
+  game:       document.getElementById('screen-game'),
+  gameover:   document.getElementById('screen-gameover'),
 };
 
 function showScreen(name) {
@@ -29,15 +27,16 @@ function showScreen(name) {
 
 showScreen('lobby');
 
-// ─── Глобальное состояние ──────────────────────────────────────
+// ─── Состояние ─────────────────────────────────────────────────
 let game = null;
+let selectedDifficulty = 'medium';
 
 const canvasEl  = document.getElementById('game-canvas');
 const minimapEl = document.getElementById('minimap');
 
 // ─── Лобби ─────────────────────────────────────────────────────
 document.getElementById('btn-create').addEventListener('click', () => {
-  connectAndDo(() => send('createRoom', { username: defaultName }));
+  showScreen('difficulty');
 });
 
 document.getElementById('btn-join').addEventListener('click', joinRoom);
@@ -47,25 +46,33 @@ document.getElementById('room-code-input').addEventListener('keydown', (e) => {
 
 function joinRoom() {
   const code = document.getElementById('room-code-input').value.trim().toUpperCase();
-  if (code.length < 6) {
-    showLobbyError('Введите 6-значный код комнаты');
-    return;
-  }
+  if (code.length < 6) { showLobbyError('Введите 6-значный код комнаты'); return; }
   connectAndDo(() => send('joinRoom', { roomCode: code, username: defaultName }));
 }
 
-function connectAndDo(action) {
-  setupSocketHandlers();
-  connect((id) => {
-    action();
+// ─── Выбор сложности ───────────────────────────────────────────
+document.querySelectorAll('.diff-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    selectedDifficulty = card.dataset.diff;
+    connectAndDo(() => send('createRoom', { username: defaultName, difficulty: selectedDifficulty }));
   });
-  // Если сокет уже подключён — action вызовется через connect()
-}
+});
 
+document.getElementById('btn-back-to-lobby').addEventListener('click', () => {
+  showScreen('lobby');
+});
+
+// ─── Ожидание ──────────────────────────────────────────────────
 document.getElementById('btn-cancel-wait').addEventListener('click', () => {
   offAll();
   showScreen('lobby');
 });
+
+// ─── Утилиты ───────────────────────────────────────────────────
+function connectAndDo(action) {
+  setupSocketHandlers();
+  connect(() => action());
+}
 
 function showLobbyError(msg) {
   const el = document.getElementById('lobby-error');
@@ -85,7 +92,7 @@ function setHudStatus(text) {
   document.getElementById('hud-status').textContent = text;
 }
 
-// ─── Финальный экран ───────────────────────────────────────────
+// ─── Финал ─────────────────────────────────────────────────────
 document.getElementById('btn-restart').addEventListener('click', () => {
   send('restartRequest');
   document.getElementById('btn-restart').disabled = true;
@@ -134,23 +141,20 @@ function setupSocketHandlers() {
     if (!game) game = new Game(canvasEl, minimapEl);
     game.start(data, myId);
     updateHUD(data.players);
-    setHudStatus('🏃 Бегите!');
+
+    const diffLabels = { easy: '🌿 Простой', medium: '🏚️ Средний', hard: '🩸 Сложный' };
+    setHudStatus(diffLabels[data.difficulty] || '🏃 Бегите!');
+    setTimeout(() => setHudStatus('🏃 Бегите!'), 3000);
+
     showScreen('game');
   });
 
-  on('stateUpdate', (update) => {
-    game?.applyStateUpdate(update);
-  });
-
-  on('playerMoved', (data) => {
-    game?.applyPlayerMoved(data);
-  });
+  on('stateUpdate',   (u)    => game?.applyStateUpdate(u));
+  on('playerMoved',   (d)    => game?.applyPlayerMoved(d));
 
   on('noiseEvent', (data) => {
     game?.addNoiseEffect(data);
-    if (data.heard) {
-      pulseHudAlert('😱 Маньяк услышал шум!', 2500);
-    }
+    if (data.heard) pulseHudAlert('😱 Маньяк услышал шум!', 2500);
   });
 
   on('playerEscaped', ({ playerId }) => {
@@ -172,12 +176,8 @@ function setupSocketHandlers() {
   on('restartVote', ({ count }) => {
     const btn = document.getElementById('btn-restart');
     const status = document.getElementById('vote-status');
-    if (count === 0) {
-      btn.disabled = false;
-      status.textContent = '';
-    } else {
-      status.textContent = `Голосов за рестарт: ${count}/2`;
-    }
+    if (count === 0) { btn.disabled = false; status.textContent = ''; }
+    else status.textContent = `Голосов за рестарт: ${count}/2`;
   });
 }
 
@@ -185,7 +185,7 @@ function showGameOver(won, customSub) {
   document.getElementById('gameover-icon').textContent  = won ? '🎉' : '💀';
   document.getElementById('gameover-title').textContent = won ? 'Вы сбежали!' : 'Пойманы!';
   document.getElementById('gameover-sub').textContent   = customSub || (won
-    ? 'Оба игрока выбрались из лабиринта. Отличная командная работа!'
+    ? 'Оба игрока выбрались! Отличная командная работа!'
     : 'Маньяк вас настиг... В следующий раз повезёт.');
   document.getElementById('vote-status').textContent = '';
   document.getElementById('btn-restart').disabled = false;

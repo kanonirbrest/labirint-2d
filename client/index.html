@@ -252,6 +252,78 @@
     .gameover-sub { font-size: 0.9rem; color: var(--text-dim); text-align: center; }
     .vote-status { font-size: 0.8rem; color: var(--text-dim); text-align: center; }
 
+    /* ────── ВЫБОР СЛОЖНОСТИ ────── */
+    #screen-difficulty {
+      gap: 16px;
+      background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a0f 70%);
+    }
+
+    .diff-title {
+      font-size: 1rem;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .difficulty-cards {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .diff-card {
+      flex: 1;
+      border: 2px solid transparent;
+      border-radius: 18px;
+      padding: 18px 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .diff-card:active { transform: scale(0.96); }
+
+    .diff-card[data-diff="easy"] {
+      background: linear-gradient(160deg, #051a05 0%, #0b2e0b 100%);
+      border-color: #2d6b2d;
+    }
+    .diff-card[data-diff="easy"]:hover {
+      box-shadow: 0 0 20px rgba(45,107,45,0.5);
+      border-color: #4a9a4a;
+    }
+
+    .diff-card[data-diff="medium"] {
+      background: linear-gradient(160deg, #06060f 0%, #0a0a2e 100%);
+      border-color: #2d2d6b;
+    }
+    .diff-card[data-diff="medium"]:hover {
+      box-shadow: 0 0 20px rgba(45,45,107,0.5);
+      border-color: #4a4a9a;
+    }
+
+    .diff-card[data-diff="hard"] {
+      background: linear-gradient(160deg, #1a0505 0%, #2e0808 100%);
+      border-color: #6b2d2d;
+    }
+    .diff-card[data-diff="hard"]:hover {
+      box-shadow: 0 0 20px rgba(239,83,80,0.4);
+      border-color: #ef5350;
+    }
+
+    .diff-icon  { font-size: 2.2rem; margin-bottom: 8px; }
+    .diff-name  { font-weight: 800; font-size: 0.85rem; margin-bottom: 4px; }
+    .diff-size  { font-size: 0.65rem; color: var(--text-dim); margin-bottom: 8px;
+                  padding: 2px 6px; background: rgba(255,255,255,0.07);
+                  border-radius: 6px; display: inline-block; }
+    .diff-desc  { font-size: 0.65rem; color: var(--text-dim); line-height: 1.6; }
+
+    .diff-card[data-diff="easy"]   .diff-name { color: #81c784; }
+    .diff-card[data-diff="medium"] .diff-name { color: #64b5f6; }
+    .diff-card[data-diff="hard"]   .diff-name { color: #ef5350; }
+
     /* ────── CANVAS полноэкранный ────── */
     canvas { display: block; }
   </style>
@@ -279,6 +351,36 @@
   </div>
 
   <div class="error-msg" id="lobby-error"></div>
+</div>
+
+<!-- ВЫБОР СЛОЖНОСТИ -->
+<div id="screen-difficulty" class="screen hidden">
+  <div>
+    <div class="logo" style="font-size:1.8rem;">Выберите<br/><span>сложность</span></div>
+  </div>
+
+  <div class="difficulty-cards">
+    <div class="diff-card" data-diff="easy">
+      <div class="diff-icon">🌿</div>
+      <div class="diff-name">Простой</div>
+      <div class="diff-size">9 × 9</div>
+      <div class="diff-desc">Маньяк<br/>медленнее<br/>вас</div>
+    </div>
+    <div class="diff-card" data-diff="medium">
+      <div class="diff-icon">🏚️</div>
+      <div class="diff-name">Средний</div>
+      <div class="diff-size">13 × 13</div>
+      <div class="diff-desc">Маньяк<br/>быстрее<br/>вас</div>
+    </div>
+    <div class="diff-card" data-diff="hard">
+      <div class="diff-icon">🩸</div>
+      <div class="diff-name">Сложный</div>
+      <div class="diff-size">19 × 19</div>
+      <div class="diff-desc">Маньяк в<br/>3× быстрее<br/>вас</div>
+    </div>
+  </div>
+
+  <button class="btn btn-secondary" id="btn-back-to-lobby" style="max-width:200px;">← Назад</button>
 </div>
 
 <!-- ОЖИДАНИЕ -->

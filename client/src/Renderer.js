@@ -1,21 +1,42 @@
 const CELL = 48;
 const WALL = 3;
 
-// Цвета
+// Темы по сложности
+const THEMES = {
+  easy: {
+    bg:       '#04100a',
+    floor:    '#071a0e',
+    wall:     '#0f3320',
+    wallEdge: '#1d6640',
+    fog:      'rgba(4,10,6,0.91)',
+    hudAccent:'#81c784',
+  },
+  medium: {
+    bg:       '#080810',
+    floor:    '#0d0d1f',
+    wall:     '#1e1e3a',
+    wallEdge: '#3a3a60',
+    fog:      'rgba(4,4,12,0.92)',
+    hudAccent:'#4fc3f7',
+  },
+  hard: {
+    bg:       '#100404',
+    floor:    '#1a0707',
+    wall:     '#3a1010',
+    wallEdge: '#6a2020',
+    fog:      'rgba(12,4,4,0.93)',
+    hudAccent:'#ef5350',
+  },
+};
+
+// Константы, не зависящие от темы
 const C = {
-  bg:       '#080810',
-  floor:    '#0d0d1f',
-  wall:     '#1e1e3a',
-  wallEdge: '#3a3a60',
-  exit:     '#ffd54f',
-  exitGlow: 'rgba(255,213,79,0.3)',
-  p1:       '#4fc3f7',
-  p2:       '#81c784',
-  maniac:   '#ef5350',
-  maniacGlow:'rgba(239,83,80,0.4)',
-  noise:    'rgba(255,200,0,0.25)',
-  noiseRing:'rgba(255,200,0,0.7)',
-  fog:      'rgba(4,4,12,0.92)',
+  exit:      '#ffd54f',
+  exitGlow:  'rgba(255,213,79,0.3)',
+  p1:        '#4fc3f7',
+  p2:        '#81c784',
+  maniac:    '#ef5350',
+  noiseRing: 'rgba(255,200,0,0.7)',
 };
 
 const VISIBILITY = 5.5 * CELL; // радиус видимости в пикселях
@@ -30,8 +51,14 @@ export class Renderer {
     this.fogCanvas = document.createElement('canvas');
     this.fogCtx = this.fogCanvas.getContext('2d');
 
+    this.theme = THEMES.medium; // по умолчанию
+
     this.resize();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  setTheme(difficulty) {
+    this.theme = THEMES[difficulty] || THEMES.medium;
   }
 
   resize() {
@@ -56,7 +83,7 @@ export class Renderer {
     const camY = me.vy - H / 2;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = C.bg;
+    ctx.fillStyle = this.theme.bg;
     ctx.fillRect(0, 0, W, H);
 
     ctx.save();
@@ -77,7 +104,7 @@ export class Renderer {
 
   drawFloor(ctx, state) {
     const { maze, mazeWidth, mazeHeight } = state;
-    ctx.fillStyle = C.floor;
+    ctx.fillStyle = this.theme.floor;
     for (let y = 0; y < mazeHeight; y++) {
       for (let x = 0; x < mazeWidth; x++) {
         ctx.fillRect(x * CELL + WALL, y * CELL + WALL, CELL - WALL, CELL - WALL);
@@ -148,32 +175,32 @@ export class Renderer {
         const py = y * CELL;
 
         // Угловые блоки (всегда рисуем)
-        ctx.fillStyle = C.wall;
+        ctx.fillStyle = this.theme.wall;
         ctx.fillRect(px, py, WALL, WALL);
 
         // Северная стена
         if (cell.n) {
-          ctx.fillStyle = C.wall;
+          ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py, CELL, WALL);
-          ctx.fillStyle = C.wallEdge;
+          ctx.fillStyle = this.theme.wallEdge;
           ctx.fillRect(px + WALL, py, CELL - WALL * 2, 1);
         }
 
         // Западная стена
         if (cell.w) {
-          ctx.fillStyle = C.wall;
+          ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py, WALL, CELL);
-          ctx.fillStyle = C.wallEdge;
+          ctx.fillStyle = this.theme.wallEdge;
           ctx.fillRect(px, py + WALL, 1, CELL - WALL * 2);
         }
 
         // Южная и восточная стены для последней строки/столбца
         if (y === mazeHeight - 1 && cell.s) {
-          ctx.fillStyle = C.wall;
+          ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py + CELL - WALL, CELL, WALL);
         }
         if (x === mazeWidth - 1 && cell.e) {
-          ctx.fillStyle = C.wall;
+          ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px + CELL - WALL, py, WALL, CELL);
         }
       }
@@ -253,7 +280,7 @@ export class Renderer {
     const H = fogCanvas.height;
 
     fogCtx.clearRect(0, 0, W, H);
-    fogCtx.fillStyle = C.fog;
+    fogCtx.fillStyle = this.theme.fog;
     fogCtx.fillRect(0, 0, W, H);
 
     // Вырезаем зоны видимости обоих игроков
