@@ -11,6 +11,8 @@ export class Game {
     this.state = null;
     this.myId = null;
     this.noiseEffects = [];
+    this.pathHint = null;
+    this.pathHintInterval = null;
 
     this.heldDir = null;
     this.lastMoveSent = 0;
@@ -59,6 +61,8 @@ export class Game {
     m.lastDir = 'down';
 
     this.renderer.setTheme(gameStartData.difficulty || 'medium');
+    this.pathHint = null;
+    this._startPathHintTimer();
     this.updateNoiseBtn();
     this.startLoop();
   }
@@ -66,6 +70,26 @@ export class Game {
   stop() {
     cancelAnimationFrame(this.rafId);
     this.rafId = null;
+    if (this.pathHintInterval) {
+      clearInterval(this.pathHintInterval);
+      this.pathHintInterval = null;
+    }
+  }
+
+  _startPathHintTimer() {
+    if (this.pathHintInterval) clearInterval(this.pathHintInterval);
+    this.pathHintInterval = setInterval(() => this._showPathHint(), 10000);
+  }
+
+  _showPathHint() {
+    if (!this.state) return;
+    const me = this.state.players[this.myId];
+    if (!me || me.escaped) return;
+
+    const path = mazePathFind(this.state.maze, { x: me.x, y: me.y }, this.state.exit);
+    if (path && path.length > 1) {
+      this.pathHint = { cells: path, createdAt: Date.now(), duration: 3500 };
+    }
   }
 
   // ─── Обновление состояния от сервера ──────────────────────────
@@ -119,7 +143,7 @@ export class Game {
       this.lastTimestamp = timestamp;
 
       this.update(dt);
-      this.renderer.render(this.state, this.myId, this.noiseEffects);
+      this.renderer.render(this.state, this.myId, this.noiseEffects, this.pathHint);
 
       this.rafId = requestAnimationFrame(loop);
     };
@@ -285,4 +309,45 @@ export class Game {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+// BFS поиск пути на клиенте (аналог серверного)
+function mazePathFind(cells, start, end) {
+  if (!cells) return null;
+  const h = cells.length, w = cells[0].length;
+  const startKey = `${start.x},${start.y}`;
+  const endKey   = `${end.x},${end.y}`;
+  if (startKey === endKey) return [start];
+
+  const queue = [startKey];
+  const parent = new Map([[startKey, null]]);
+  const deltas = [
+    { dx: 0, dy: -1, wall: 'n' }, { dx: 1, dy: 0, wall: 'e' },
+    { dx: 0, dy: 1,  wall: 's' }, { dx: -1, dy: 0, wall: 'w' },
+  ];
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    if (cur === endKey) {
+      const path = [];
+      let k = endKey;
+      while (k !== null) {
+        const [x, y] = k.split(',').map(Number);
+        path.unshift({ x, y });
+        k = parent.get(k);
+      }
+      return path;
+    }
+    const [cx, cy] = cur.split(',').map(Number);
+    for (const { dx, dy, wall } of deltas) {
+      if (cells[cy][cx][wall]) continue;
+      const nx = cx + dx, ny = cy + dy;
+      const nk = `${nx},${ny}`;
+      if (!parent.has(nk) && nx >= 0 && nx < w && ny >= 0 && ny < h) {
+        parent.set(nk, cur);
+        queue.push(nk);
+      }
+    }
+  }
+  return null;
 }

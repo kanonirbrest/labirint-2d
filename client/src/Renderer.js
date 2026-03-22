@@ -1,27 +1,27 @@
 const CELL = 48;
-const WALL = 3;
+const WALL = 5;
 
 // Темы по сложности
 const THEMES = {
   easy: {
     bg:       '#04100a',
     floor:    '#071a0e',
-    wall:     '#0f3320',
-    wallEdge: '#1d6640',
+    wall:     '#1a5c30',
+    wallEdge: '#4caf70',
     fog:      'rgba(4,10,6,0.82)',
   },
   medium: {
     bg:       '#080810',
     floor:    '#0d0d1f',
-    wall:     '#1e1e3a',
-    wallEdge: '#3a3a60',
+    wall:     '#2a2a5a',
+    wallEdge: '#5c5caa',
     fog:      'rgba(4,4,12,0.84)',
   },
   hard: {
     bg:       '#100404',
     floor:    '#1a0707',
-    wall:     '#3a1010',
-    wallEdge: '#6a2020',
+    wall:     '#5a1a1a',
+    wallEdge: '#aa3a3a',
     fog:      'rgba(12,4,4,0.86)',
   },
 };
@@ -67,7 +67,7 @@ export class Renderer {
     this.fogCanvas.height    = this.canvas.height;
   }
 
-  render(state, myId, noiseEffects) {
+  render(state, myId, noiseEffects, pathHint) {
     if (!state?.maze) return;
     const { ctx, canvas } = this;
     const W = canvas.width, H = canvas.height;
@@ -86,6 +86,7 @@ export class Renderer {
 
     this.drawFloor(ctx, state);
     this.drawExit(ctx, state);
+    this.drawPathHint(ctx, pathHint);
     this.drawNoiseEffects(ctx, noiseEffects);
     // Конус фонарика (под стенами, над полом)
     this.drawFlashlightBeams(ctx, state);
@@ -126,6 +127,83 @@ export class Renderer {
     ctx.fillText('⇒', ex + CELL / 2, ey + CELL / 2);
   }
 
+  // ─── Путь к выходу ──────────────────────────────────────────
+  drawPathHint(ctx, hint) {
+    if (!hint) return;
+    const now = Date.now();
+    const age = now - hint.createdAt;
+    if (age > hint.duration) return;
+
+    const FADE_IN = 400, FADE_OUT = 800;
+    let alpha;
+    if (age < FADE_IN) {
+      alpha = age / FADE_IN;
+    } else if (age > hint.duration - FADE_OUT) {
+      alpha = (hint.duration - age) / FADE_OUT;
+    } else {
+      alpha = 1;
+    }
+
+    const cells = hint.cells;
+    const t = now / 1000;
+
+    // Линия вдоль пути (под точками)
+    if (cells.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(cells[0].x * CELL + CELL / 2, cells[0].y * CELL + CELL / 2);
+      for (let i = 1; i < cells.length; i++) {
+        ctx.lineTo(cells[i].x * CELL + CELL / 2, cells[i].y * CELL + CELL / 2);
+      }
+      ctx.strokeStyle = `rgba(255,213,79,${alpha * 0.18})`;
+      ctx.lineWidth = CELL * 0.4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+
+    // Точки вдоль пути (пропускаем первую — это игрок, и последнюю — выход)
+    for (let i = 1; i < cells.length - 1; i++) {
+      const cx = cells[i].x * CELL + CELL / 2;
+      const cy = cells[i].y * CELL + CELL / 2;
+
+      // Волна движется от игрока к выходу
+      const wave = Math.sin(t * 4 - i * 0.6);
+      const pulse = 0.65 + 0.35 * wave;
+      const r = (3 + wave * 1.5) * pulse;
+      const a = alpha * (0.55 + 0.35 * wave);
+
+      ctx.shadowColor = '#ffd54f';
+      ctx.shadowBlur  = 10;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(1, r), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,213,79,${a})`;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Стрелка на предпоследней клетке к выходу
+    const last = cells[cells.length - 1];
+    const prev = cells[cells.length - 2] || last;
+    const ax = last.x * CELL + CELL / 2;
+    const ay = last.y * CELL + CELL / 2;
+    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    ctx.fillStyle = `rgba(255,213,79,${alpha * 0.9})`;
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur  = 12;
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-6, -6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
   // ─── Конус фонариков (рисуется ДО стен — будет «перекрыт» туманом) ─
   drawFlashlightBeams(ctx, state) {
     for (const player of Object.values(state.players)) {
@@ -159,31 +237,49 @@ export class Renderer {
         const cell = maze[y][x];
         const px = x * CELL, py = y * CELL;
 
+        // Угловой блок
         ctx.fillStyle = this.theme.wall;
-        ctx.fillRect(px, py, WALL, WALL); // угол
+        ctx.fillRect(px, py, WALL, WALL);
 
         if (cell.n) {
+          // Тело стены
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py, CELL, WALL);
+          // Яркий верхний край (имитация объёма)
           ctx.fillStyle = this.theme.wallEdge;
-          ctx.fillRect(px + WALL, py, CELL - WALL * 2, 1);
+          ctx.fillRect(px + WALL, py, CELL - WALL * 2, 2);
         }
         if (cell.w) {
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py, WALL, CELL);
           ctx.fillStyle = this.theme.wallEdge;
-          ctx.fillRect(px, py + WALL, 1, CELL - WALL * 2);
+          ctx.fillRect(px, py + WALL, 2, CELL - WALL * 2);
         }
         if (y === mazeHeight - 1 && cell.s) {
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py + CELL - WALL, CELL, WALL);
+          ctx.fillStyle = this.theme.wallEdge;
+          ctx.fillRect(px + WALL, py + CELL - WALL, CELL - WALL * 2, 2);
         }
         if (x === mazeWidth - 1 && cell.e) {
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px + CELL - WALL, py, WALL, CELL);
+          ctx.fillStyle = this.theme.wallEdge;
+          ctx.fillRect(px + CELL - WALL, py + WALL, 2, CELL - WALL * 2);
         }
       }
     }
+
+    // Внешняя рамка лабиринта — жирная яркая обводка
+    const totalW = mazeWidth  * CELL;
+    const totalH = mazeHeight * CELL;
+    ctx.strokeStyle = this.theme.wallEdge;
+    ctx.lineWidth   = 3;
+    ctx.shadowColor = this.theme.wallEdge;
+    ctx.shadowBlur  = 8;
+    ctx.strokeRect(1, 1, totalW - 2, totalH - 2);
+    ctx.shadowBlur  = 0;
+    ctx.lineWidth   = 1;
   }
 
   // ─── Шум ────────────────────────────────────────────────────
