@@ -2,31 +2,34 @@ import { generateMaze, findPath, distance } from './MazeGenerator.js';
 
 const DIFFICULTY = {
   easy: {
-    mazeW: 9, mazeH: 9,
+    mazeW: 13, mazeH: 13,  // большой, но прямые коридоры — легко ориентироваться
+    mazeStyle: 'easy',
     tickMs: 100,
-    maniacMoveTicks: 4,      // 400ms — маньяк МЕДЛЕННЕЕ игрока (280ms)
+    maniacMoveTicks: 4,    // 400ms — маньяк МЕДЛЕННЕЕ игрока
     playerMoveCooldown: 280,
-    noiseRadius: 10,
+    noiseRadius: 9,
     noiseCooldown: 2000,
     chaseDuration: 5000,
   },
   medium: {
-    mazeW: 13, mazeH: 13,
+    mazeW: 19, mazeH: 19,  // большой, стандартный DFS
+    mazeStyle: 'normal',
     tickMs: 100,
-    maniacMoveTicks: 2,      // 200ms — маньяк в 1.4× быстрее
+    maniacMoveTicks: 2,    // 200ms — маньяк в 1.4× быстрее
     playerMoveCooldown: 280,
-    noiseRadius: 7,
+    noiseRadius: 8,
     noiseCooldown: 4000,
     chaseDuration: 9000,
   },
   hard: {
-    mazeW: 19, mazeH: 19,
+    mazeW: 27, mazeH: 27,  // огромный, запутанный + петли
+    mazeStyle: 'hard',
     tickMs: 100,
-    maniacMoveTicks: 1,      // 100ms — маньяк в 2.8× быстрее (страшно!)
+    maniacMoveTicks: 1,    // 100ms — маньяк в 2.8× быстрее
     playerMoveCooldown: 280,
-    noiseRadius: 5,
+    noiseRadius: 6,
     noiseCooldown: 6000,
-    chaseDuration: 13000,
+    chaseDuration: 14000,
   },
 };
 
@@ -98,7 +101,7 @@ export class GameRoom {
 
   startGame() {
     const { mazeW, mazeH } = this.cfg;
-    this.maze = generateMaze(mazeW, mazeH);
+    this.maze = generateMaze(mazeW, mazeH, this.cfg.mazeStyle || 'normal');
 
     this.exit = { x: mazeW - 1, y: Math.floor(mazeH / 2) };
     this.maze[this.exit.y][this.exit.x].e = false;
