@@ -78,7 +78,7 @@ export class Game {
 
   _startPathHintTimer() {
     if (this.pathHintInterval) clearInterval(this.pathHintInterval);
-    this.pathHintInterval = setInterval(() => this._showPathHint(), 10000);
+    this.pathHintInterval = setInterval(() => this._showPathHint(), 5000);
   }
 
   _showPathHint() {
