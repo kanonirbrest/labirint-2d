@@ -8,21 +8,21 @@ const THEMES = {
     floor:    '#071a0e',
     wall:     '#0f3320',
     wallEdge: '#1d6640',
-    fog:      'rgba(4,10,6,0.93)',
+    fog:      'rgba(4,10,6,0.82)',
   },
   medium: {
     bg:       '#080810',
     floor:    '#0d0d1f',
     wall:     '#1e1e3a',
     wallEdge: '#3a3a60',
-    fog:      'rgba(4,4,12,0.93)',
+    fog:      'rgba(4,4,12,0.84)',
   },
   hard: {
     bg:       '#100404',
     floor:    '#1a0707',
     wall:     '#3a1010',
     wallEdge: '#6a2020',
-    fog:      'rgba(12,4,4,0.94)',
+    fog:      'rgba(12,4,4,0.86)',
   },
 };
 
@@ -39,9 +39,9 @@ function dirAngle(dir) {
   return { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[dir] ?? 0;
 }
 
-const VISIBILITY_AMBIENT = CELL * 1.8;  // маленький круг вокруг себя
-const VISIBILITY_CONE    = CELL * 5.5;  // луч фонарика
-const CONE_ANGLE         = Math.PI / 2.2; // ~82°
+const VISIBILITY_AMBIENT = CELL * 2.8;  // круг вокруг себя
+const VISIBILITY_CONE    = CELL * 7.5;  // луч фонарика
+const CONE_ANGLE         = Math.PI / 1.6; // ~112° — широкий конус
 
 export class Renderer {
   constructor(canvas, minimapCanvas) {
@@ -463,7 +463,8 @@ export class Renderer {
 
       const cg = fogCtx.createRadialGradient(0, 0, 0, 0, 0, VISIBILITY_CONE);
       cg.addColorStop(0,   'rgba(0,0,0,1)');
-      cg.addColorStop(0.75,'rgba(0,0,0,0.85)');
+      cg.addColorStop(0.6, 'rgba(0,0,0,0.95)');
+      cg.addColorStop(0.85,'rgba(0,0,0,0.6)');
       cg.addColorStop(1,   'rgba(0,0,0,0)');
       fogCtx.fillStyle = cg;
       fogCtx.fill();
