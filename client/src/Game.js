@@ -48,6 +48,7 @@ export class Game {
         ...p,
         vx: p.x * CELL + CELL / 2,
         vy: p.y * CELL + CELL / 2,
+        lastDir: 'down',
       };
     }
 
@@ -55,6 +56,7 @@ export class Game {
     const m = this.state.maniac;
     m.vx = m.x * CELL + CELL / 2;
     m.vy = m.y * CELL + CELL / 2;
+    m.lastDir = 'down';
 
     this.renderer.setTheme(gameStartData.difficulty || 'medium');
     this.updateNoiseBtn();
@@ -75,12 +77,27 @@ export class Game {
         Object.assign(this.state.players[id], p);
       }
     }
-    Object.assign(this.state.maniac, maniac);
+    // Определяем направление маньяка по изменению позиции
+    const m = this.state.maniac;
+    const dx = maniac.x - m.x;
+    const dy = maniac.y - m.y;
+    if (dx > 0) m.lastDir = 'right';
+    else if (dx < 0) m.lastDir = 'left';
+    else if (dy > 0) m.lastDir = 'down';
+    else if (dy < 0) m.lastDir = 'up';
+    Object.assign(m, maniac);
   }
 
   applyPlayerMoved({ playerId, x, y }) {
     if (!this.state?.players[playerId]) return;
     const p = this.state.players[playerId];
+    // Определяем направление по изменению позиции
+    const dx = x - p.x;
+    const dy = y - p.y;
+    if (dx > 0) p.lastDir = 'right';
+    else if (dx < 0) p.lastDir = 'left';
+    else if (dy > 0) p.lastDir = 'down';
+    else if (dy < 0) p.lastDir = 'up';
     p.x = x;
     p.y = y;
   }
@@ -136,6 +153,8 @@ export class Game {
     if (this.heldDir && now - this.lastMoveSent >= MOVE_INTERVAL) {
       send('move', { direction: this.heldDir });
       this.lastMoveSent = now;
+      if (this.myId && this.state?.players[this.myId])
+        this.state.players[this.myId].lastDir = this.heldDir;
     }
 
     // Обновить кнопку шума (cooldown)
@@ -159,6 +178,8 @@ export class Game {
         if (now - this.lastMoveSent >= MOVE_INTERVAL) {
           send('move', { direction: this.heldDir });
           this.lastMoveSent = now;
+          if (this.myId && this.state?.players[this.myId])
+            this.state.players[this.myId].lastDir = this.heldDir;
         }
       }
       if (e.key === ' ' || e.key === 'e' || e.key === 'E') {

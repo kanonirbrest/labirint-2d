@@ -8,51 +8,50 @@ const THEMES = {
     floor:    '#071a0e',
     wall:     '#0f3320',
     wallEdge: '#1d6640',
-    fog:      'rgba(4,10,6,0.91)',
-    hudAccent:'#81c784',
+    fog:      'rgba(4,10,6,0.93)',
   },
   medium: {
     bg:       '#080810',
     floor:    '#0d0d1f',
     wall:     '#1e1e3a',
     wallEdge: '#3a3a60',
-    fog:      'rgba(4,4,12,0.92)',
-    hudAccent:'#4fc3f7',
+    fog:      'rgba(4,4,12,0.93)',
   },
   hard: {
     bg:       '#100404',
     floor:    '#1a0707',
     wall:     '#3a1010',
     wallEdge: '#6a2020',
-    fog:      'rgba(12,4,4,0.93)',
-    hudAccent:'#ef5350',
+    fog:      'rgba(12,4,4,0.94)',
   },
 };
 
-// Константы, не зависящие от темы
 const C = {
-  exit:      '#ffd54f',
-  exitGlow:  'rgba(255,213,79,0.3)',
-  p1:        '#4fc3f7',
-  p2:        '#81c784',
-  maniac:    '#ef5350',
-  noiseRing: 'rgba(255,200,0,0.7)',
+  exit:     '#ffd54f',
+  exitGlow: 'rgba(255,213,79,0.3)',
+  p1:       '#4fc3f7',
+  p2:       '#81c784',
+  maniac:   '#ef5350',
 };
 
-const VISIBILITY = 5.5 * CELL; // радиус видимости в пикселях
+// Угол поворота по направлению (right = 0, вращение по часовой)
+function dirAngle(dir) {
+  return { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[dir] ?? 0;
+}
+
+const VISIBILITY_AMBIENT = CELL * 1.8;  // маленький круг вокруг себя
+const VISIBILITY_CONE    = CELL * 5.5;  // луч фонарика
+const CONE_ANGLE         = Math.PI / 2.2; // ~82°
 
 export class Renderer {
   constructor(canvas, minimapCanvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx    = canvas.getContext('2d');
     this.minimapCanvas = minimapCanvas;
-    this.mmCtx = minimapCanvas.getContext('2d');
-
+    this.mmCtx  = minimapCanvas.getContext('2d');
     this.fogCanvas = document.createElement('canvas');
-    this.fogCtx = this.fogCanvas.getContext('2d');
-
-    this.theme = THEMES.medium; // по умолчанию
-
+    this.fogCtx    = this.fogCanvas.getContext('2d');
+    this.theme  = THEMES.medium;
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -62,23 +61,19 @@ export class Renderer {
   }
 
   resize() {
-    this.canvas.width  = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-    this.fogCanvas.width  = this.canvas.width;
-    this.fogCanvas.height = this.canvas.height;
+    this.canvas.width        = window.innerWidth;
+    this.canvas.height       = window.innerHeight;
+    this.fogCanvas.width     = this.canvas.width;
+    this.fogCanvas.height    = this.canvas.height;
   }
 
   render(state, myId, noiseEffects) {
     if (!state?.maze) return;
-
     const { ctx, canvas } = this;
-    const W = canvas.width;
-    const H = canvas.height;
-
+    const W = canvas.width, H = canvas.height;
     const me = state.players[myId];
     if (!me) return;
 
-    // Камера: центрируем на моём игроке
     const camX = me.vx - W / 2;
     const camY = me.vy - H / 2;
 
@@ -92,6 +87,8 @@ export class Renderer {
     this.drawFloor(ctx, state);
     this.drawExit(ctx, state);
     this.drawNoiseEffects(ctx, noiseEffects);
+    // Конус фонарика (под стенами, над полом)
+    this.drawFlashlightBeams(ctx, state);
     this.drawWalls(ctx, state);
     this.drawPlayers(ctx, state, myId);
     this.drawManiac(ctx, state);
@@ -102,33 +99,26 @@ export class Renderer {
     this.drawMinimap(state, myId);
   }
 
-  drawFloor(ctx, state) {
-    const { maze, mazeWidth, mazeHeight } = state;
+  // ─── Пол ────────────────────────────────────────────────────
+  drawFloor(ctx, { maze, mazeWidth, mazeHeight }) {
     ctx.fillStyle = this.theme.floor;
-    for (let y = 0; y < mazeHeight; y++) {
-      for (let x = 0; x < mazeWidth; x++) {
+    for (let y = 0; y < mazeHeight; y++)
+      for (let x = 0; x < mazeWidth; x++)
         ctx.fillRect(x * CELL + WALL, y * CELL + WALL, CELL - WALL, CELL - WALL);
-      }
-    }
   }
 
-  drawExit(ctx, state) {
-    const { exit } = state;
-    const ex = exit.x * CELL;
-    const ey = exit.y * CELL;
-
-    // Сияние выхода
-    const grd = ctx.createRadialGradient(ex + CELL, ey + CELL / 2, 4, ex + CELL, ey + CELL / 2, CELL * 1.5);
+  // ─── Выход ──────────────────────────────────────────────────
+  drawExit(ctx, { exit }) {
+    const ex = exit.x * CELL, ey = exit.y * CELL;
+    const grd = ctx.createRadialGradient(ex + CELL, ey + CELL / 2, 4, ex + CELL, ey + CELL / 2, CELL * 1.8);
     grd.addColorStop(0, C.exitGlow);
     grd.addColorStop(1, 'rgba(255,213,79,0)');
     ctx.fillStyle = grd;
     ctx.fillRect(ex - CELL, ey - CELL, CELL * 4, CELL * 3);
 
-    // Клетка выхода
-    ctx.fillStyle = 'rgba(255,213,79,0.15)';
+    ctx.fillStyle = 'rgba(255,213,79,0.12)';
     ctx.fillRect(ex + WALL, ey + WALL, CELL - WALL, CELL - WALL);
 
-    // Стрелка вправо
     ctx.fillStyle = C.exit;
     ctx.font = `bold ${CELL * 0.5}px sans-serif`;
     ctx.textAlign = 'center';
@@ -136,65 +126,54 @@ export class Renderer {
     ctx.fillText('⇒', ex + CELL / 2, ey + CELL / 2);
   }
 
-  drawNoiseEffects(ctx, noiseEffects) {
-    const now = Date.now();
-    for (const effect of noiseEffects) {
-      const age = now - effect.startTime;
-      const duration = 2000;
-      if (age > duration) continue;
+  // ─── Конус фонариков (рисуется ДО стен — будет «перекрыт» туманом) ─
+  drawFlashlightBeams(ctx, state) {
+    for (const player of Object.values(state.players)) {
+      if (player.escaped) continue;
+      const cx = player.vx, cy = player.vy;
+      const angle = dirAngle(player.lastDir || 'down');
 
-      const progress = age / duration;
-      const alpha = (1 - progress) * 0.6;
-      const radius = effect.radius * CELL * progress;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
 
-      const cx = effect.x * CELL + CELL / 2;
-      const cy = effect.y * CELL + CELL / 2;
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, CELL * 4);
+      grd.addColorStop(0,   'rgba(255,245,200,0.18)');
+      grd.addColorStop(0.6, 'rgba(255,245,200,0.07)');
+      grd.addColorStop(1,   'rgba(255,245,200,0)');
 
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255,200,0,${alpha})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Внутренний пульс
-      ctx.beginPath();
-      ctx.arc(cx, cy, CELL * 0.4, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,200,0,${alpha * 0.5})`;
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, CELL * 4, -CONE_ANGLE / 2, CONE_ANGLE / 2);
+      ctx.closePath();
+      ctx.fillStyle = grd;
       ctx.fill();
+      ctx.restore();
     }
   }
 
-  drawWalls(ctx, state) {
-    const { maze, mazeWidth, mazeHeight } = state;
-    ctx.fillStyle = C.wall;
-
+  // ─── Стены ──────────────────────────────────────────────────
+  drawWalls(ctx, { maze, mazeWidth, mazeHeight }) {
     for (let y = 0; y < mazeHeight; y++) {
       for (let x = 0; x < mazeWidth; x++) {
         const cell = maze[y][x];
-        const px = x * CELL;
-        const py = y * CELL;
+        const px = x * CELL, py = y * CELL;
 
-        // Угловые блоки (всегда рисуем)
         ctx.fillStyle = this.theme.wall;
-        ctx.fillRect(px, py, WALL, WALL);
+        ctx.fillRect(px, py, WALL, WALL); // угол
 
-        // Северная стена
         if (cell.n) {
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py, CELL, WALL);
           ctx.fillStyle = this.theme.wallEdge;
           ctx.fillRect(px + WALL, py, CELL - WALL * 2, 1);
         }
-
-        // Западная стена
         if (cell.w) {
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py, WALL, CELL);
           ctx.fillStyle = this.theme.wallEdge;
           ctx.fillRect(px, py + WALL, 1, CELL - WALL * 2);
         }
-
-        // Южная и восточная стены для последней строки/столбца
         if (y === mazeHeight - 1 && cell.s) {
           ctx.fillStyle = this.theme.wall;
           ctx.fillRect(px, py + CELL - WALL, CELL, WALL);
@@ -207,83 +186,256 @@ export class Renderer {
     }
   }
 
-  drawPlayers(ctx, state, myId) {
-    const colors = [C.p1, C.p2];
-
-    for (const [id, player] of Object.entries(state.players)) {
-      if (player.escaped) continue;
-
-      const cx = player.vx;
-      const cy = player.vy;
-      const r  = CELL * 0.36;
-      const color = colors[player.index] || C.p1;
-      const isMe = id === myId;
-
-      // Тень/свечение
-      ctx.shadowColor = color;
-      ctx.shadowBlur = isMe ? 14 : 8;
-
-      // Тело
+  // ─── Шум ────────────────────────────────────────────────────
+  drawNoiseEffects(ctx, noiseEffects) {
+    const now = Date.now();
+    for (const e of noiseEffects) {
+      const age = now - e.startTime;
+      if (age > 2000) continue;
+      const p = age / 2000;
+      const alpha = (1 - p) * 0.55;
+      const r = e.radius * CELL * p;
+      const cx = e.x * CELL + CELL / 2, cy = e.y * CELL + CELL / 2;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
+      ctx.strokeStyle = `rgba(255,200,0,${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, CELL * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,200,0,${alpha * 0.4})`;
       ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // Обводка для «моего» игрока
-      if (isMe) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      // Индикатор игрока
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${CELL * 0.28}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(player.index === 0 ? '1' : '2', cx, cy);
     }
   }
 
-  drawManiac(ctx, state) {
-    const { maniac } = state;
-    const cx = maniac.vx;
-    const cy = maniac.vy;
-    const r  = CELL * 0.4;
-
-    const isChasing = maniac.state === 'chasing';
-
-    // Пульсирующее свечение
-    ctx.shadowColor = C.maniac;
-    ctx.shadowBlur  = isChasing ? 24 : 12;
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = C.maniac;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Иконка-знак
-    ctx.fillStyle = '#fff';
-    ctx.font = `${CELL * 0.4}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(isChasing ? '😡' : '👁️', cx, cy);
+  // ─── Игроки — пиксельные человечки с фонариком ──────────────
+  drawPlayers(ctx, state, myId) {
+    const colors = [C.p1, C.p2];
+    for (const [id, player] of Object.entries(state.players)) {
+      if (player.escaped) continue;
+      const color = colors[player.index] || C.p1;
+      const isMe = id === myId;
+      this._drawPixelPlayer(ctx, player.vx, player.vy, color, player.index + 1,
+                            player.lastDir || 'down', isMe);
+    }
   }
 
+  _drawPixelPlayer(ctx, cx, cy, color, num, dir, isMe) {
+    // Отступ — центр клетки, рисуем немного выше
+    const oy = -4;
+
+    ctx.save();
+
+    // Свечение вокруг «своего» игрока
+    if (isMe) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur  = 12;
+    }
+
+    // ── Ноги ──
+    const legColor = shadeColor(color, -60);
+    ctx.fillStyle = legColor;
+    ctx.fillRect(cx - 8,  cy + oy + 10, 6, 12); // левая
+    ctx.fillRect(cx + 2,  cy + oy + 10, 6, 12); // правая
+
+    // Ботинки
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx - 9,  cy + oy + 20, 8, 4);
+    ctx.fillRect(cx + 1,  cy + oy + 20, 8, 4);
+
+    // ── Тело (куртка) ──
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - 11, cy + oy - 10, 22, 22);
+
+    // Молния/деталь на груди
+    ctx.fillStyle = shadeColor(color, +30);
+    ctx.fillRect(cx - 1,  cy + oy - 8,  2, 14);
+
+    ctx.shadowBlur = 0;
+
+    // ── Рука с фонариком ──
+    this._drawFlashlightArm(ctx, cx, cy + oy, dir, color);
+
+    // ── Голова ──
+    ctx.fillStyle = '#d4a574';
+    ctx.beginPath();
+    ctx.arc(cx, cy + oy - 19, 11, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Волосы (цвет под тему персонажа)
+    ctx.fillStyle = shadeColor(color, -80);
+    ctx.fillRect(cx - 11, cy + oy - 30, 22, 8);
+    ctx.beginPath();
+    ctx.arc(cx, cy + oy - 19, 11, Math.PI, Math.PI * 2);
+    ctx.fill();
+
+    // ── Глаза (смотрят в направлении движения) ──
+    const eyeShift = { right:[4,0], left:[-4,0], up:[0,-4], down:[2,2] }[dir] || [4,0];
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx + eyeShift[0], cy + oy - 19 + eyeShift[1], 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(cx + eyeShift[0] + Math.sign(eyeShift[0]) * 0.5,
+            cy + oy - 19 + eyeShift[1], 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Номер игрока ──
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(num, cx, cy + oy + 1);
+
+    ctx.restore();
+  }
+
+  _drawFlashlightArm(ctx, cx, cy, dir, bodyColor) {
+    // Рука + корпус фонаря + свечение объектива
+    const cfg = {
+      right: { arm: [cx + 10, cy - 3,  14, 5],  lens: [cx + 24, cy] },
+      left:  { arm: [cx - 24, cy - 3,  14, 5],  lens: [cx - 25, cy] },
+      up:    { arm: [cx + 7,  cy - 24, 5,  14], lens: [cx + 9,  cy - 25] },
+      down:  { arm: [cx + 7,  cy + 10, 5,  14], lens: [cx + 9,  cy + 25] },
+    };
+    const c = cfg[dir] || cfg.right;
+
+    // Рука
+    ctx.fillStyle = '#8d6e63';
+    ctx.fillRect(...c.arm);
+
+    // Корпус фонарика
+    ctx.fillStyle = '#424242';
+    ctx.fillRect(c.lens[0] - 3, c.lens[1] - 3, 9, 7);
+
+    // Линза — жёлтое свечение
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur  = 10;
+    ctx.fillStyle   = '#ffd54f';
+    ctx.beginPath();
+    ctx.arc(c.lens[0] + 1, c.lens[1], 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // ─── Маньяк — маска + топор ──────────────────────────────────
+  drawManiac(ctx, state) {
+    const { maniac } = state;
+    const cx = maniac.vx, cy = maniac.vy;
+    const isChasing = maniac.state === 'chasing';
+    const t = Date.now() / 1000;
+
+    ctx.save();
+
+    // Частицы ярости при погоне
+    if (isChasing) this._drawRageParticles(ctx, cx, cy, t);
+
+    // ── Ноги ──
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(cx - 10, cy + 8,  9, 14);
+    ctx.fillRect(cx + 1,  cy + 8,  9, 14);
+
+    // Сапоги
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(cx - 11, cy + 20, 11, 5);
+    ctx.fillRect(cx,      cy + 20, 11, 5);
+
+    // ── Широкие плечи / пальто ──
+    const bodyColor = isChasing ? '#3a0505' : '#141414';
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(cx - 15, cy - 14, 30, 24); // широкое тело
+    ctx.fillRect(cx - 18, cy - 14, 36, 8);  // плечи
+
+    // ── Топор ──
+    const axeSway = isChasing
+      ? Math.sin(t * 9) * 6
+      : Math.sin(t * 1.5) * 3;
+
+    // Рукоять
+    ctx.fillStyle = '#5d4037';
+    ctx.fillRect(cx + 15, cy - 24 + axeSway, 5, 28);
+
+    // Лезвие
+    ctx.fillStyle = isChasing ? '#b71c1c' : '#9e9e9e';
+    ctx.fillRect(cx + 13, cy - 36 + axeSway, 16, 16);
+
+    // Блеск лезвия
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cx + 25, cy - 35 + axeSway, 3, 13);
+
+    // Кровь на топоре при погоне
+    if (isChasing) {
+      ctx.fillStyle = 'rgba(180,0,0,0.8)';
+      ctx.fillRect(cx + 15, cy - 26 + axeSway, 10, 5);
+    }
+
+    // ── Голова ──
+    ctx.fillStyle = '#c0a080';
+    ctx.fillRect(cx - 13, cy - 36, 26, 24);
+
+    // ── МАСКА (белая, хоккейная) ──
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillRect(cx - 12, cy - 35, 24, 22);
+
+    // Дырки под глаза (тёмные прямоугольники)
+    ctx.fillStyle = '#111';
+    ctx.fillRect(cx - 9,  cy - 30, 7, 6);
+    ctx.fillRect(cx + 2,  cy - 30, 7, 6);
+
+    // Горизонтальные полосы маски
+    ctx.fillStyle = '#bbb';
+    ctx.fillRect(cx - 12, cy - 22, 24, 2);
+    ctx.fillRect(cx - 12, cy - 16, 24, 2);
+
+    // Прорезь рта (зловещая)
+    ctx.fillStyle = isChasing ? '#6a0000' : '#555';
+    ctx.fillRect(cx - 6,  cy - 15, 12, 3);
+
+    // Красные глаза внутри дырок при погоне
+    if (isChasing) {
+      ctx.fillStyle = '#ff1744';
+      ctx.shadowColor = '#ff1744';
+      ctx.shadowBlur  = 8;
+      ctx.fillRect(cx - 8,  cy - 29, 5, 4);
+      ctx.fillRect(cx + 3,  cy - 29, 5, 4);
+      ctx.shadowBlur = 0;
+    }
+
+    // Свечение маньяка
+    ctx.shadowColor = isChasing ? '#ef5350' : 'rgba(100,0,0,0.5)';
+    ctx.shadowBlur  = isChasing ? 24 : 8;
+    ctx.strokeStyle = isChasing ? '#ef5350' : '#330000';
+    ctx.lineWidth   = 1.5;
+    ctx.strokeRect(cx - 15, cy - 36, 30, 60);
+    ctx.shadowBlur  = 0;
+
+    ctx.restore();
+  }
+
+  _drawRageParticles(ctx, cx, cy, t) {
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + t * 2.5;
+      const dist  = 26 + Math.sin(t * 4 + i * 0.9) * 10;
+      const px    = cx + Math.cos(angle) * dist;
+      const py    = cy + Math.sin(angle) * dist;
+      const size  = 2.5 + Math.sin(t * 6 + i * 0.6) * 1.5;
+      const alpha = 0.5 + Math.sin(t * 5 + i) * 0.3;
+
+      ctx.fillStyle = `rgba(239,83,80,${alpha})`;
+      ctx.fillRect(px - size / 2, py - size / 2, size, size);
+    }
+  }
+
+  // ─── Туман войны (конус фонарика + ambient) ─────────────────
   drawFogOfWar(state, myId, camX, camY) {
     const { fogCanvas, fogCtx } = this;
-    const W = fogCanvas.width;
-    const H = fogCanvas.height;
+    const W = fogCanvas.width, H = fogCanvas.height;
 
     fogCtx.clearRect(0, 0, W, H);
     fogCtx.fillStyle = this.theme.fog;
     fogCtx.fillRect(0, 0, W, H);
 
-    // Вырезаем зоны видимости обоих игроков
     fogCtx.globalCompositeOperation = 'destination-out';
 
     for (const [, player] of Object.entries(state.players)) {
@@ -291,39 +443,56 @@ export class Renderer {
       const sx = player.vx - camX;
       const sy = player.vy - camY;
 
-      const grd = fogCtx.createRadialGradient(sx, sy, 0, sx, sy, VISIBILITY);
-      grd.addColorStop(0,   'rgba(0,0,0,1)');
-      grd.addColorStop(0.75,'rgba(0,0,0,0.9)');
-      grd.addColorStop(1,   'rgba(0,0,0,0)');
-      fogCtx.fillStyle = grd;
+      // Маленький ambient-круг вокруг себя
+      const ag = fogCtx.createRadialGradient(sx, sy, 0, sx, sy, VISIBILITY_AMBIENT);
+      ag.addColorStop(0, 'rgba(0,0,0,1)');
+      ag.addColorStop(1, 'rgba(0,0,0,0)');
+      fogCtx.fillStyle = ag;
       fogCtx.fillRect(0, 0, W, H);
+
+      // Конус фонарика вперёд
+      const angle = dirAngle(player.lastDir || 'down');
+      fogCtx.save();
+      fogCtx.translate(sx, sy);
+      fogCtx.rotate(angle);
+
+      fogCtx.beginPath();
+      fogCtx.moveTo(0, 0);
+      fogCtx.arc(0, 0, VISIBILITY_CONE, -CONE_ANGLE / 2, CONE_ANGLE / 2);
+      fogCtx.closePath();
+
+      const cg = fogCtx.createRadialGradient(0, 0, 0, 0, 0, VISIBILITY_CONE);
+      cg.addColorStop(0,   'rgba(0,0,0,1)');
+      cg.addColorStop(0.75,'rgba(0,0,0,0.85)');
+      cg.addColorStop(1,   'rgba(0,0,0,0)');
+      fogCtx.fillStyle = cg;
+      fogCtx.fill();
+      fogCtx.restore();
     }
 
     fogCtx.globalCompositeOperation = 'source-over';
     this.ctx.drawImage(fogCanvas, 0, 0);
   }
 
+  // ─── Мини-карта ─────────────────────────────────────────────
   drawMinimap(state, myId) {
     const { mmCtx, minimapCanvas } = this;
     const { mazeWidth: mw, mazeHeight: mh, maze, exit, players, maniac } = state;
-    const MW = minimapCanvas.width;
-    const MH = minimapCanvas.height;
-    const cw = MW / mw;
-    const ch = MH / mh;
+    const MW = minimapCanvas.width, MH = minimapCanvas.height;
+    const cw = MW / mw, ch = MH / mh;
 
     mmCtx.clearRect(0, 0, MW, MH);
     mmCtx.fillStyle = 'rgba(10,10,20,0.9)';
     mmCtx.fillRect(0, 0, MW, MH);
 
-    // Стены
     mmCtx.fillStyle = '#2a2a4a';
     for (let y = 0; y < mh; y++) {
       for (let x = 0; x < mw; x++) {
         const cell = maze[y][x];
         if (cell.n) mmCtx.fillRect(x * cw, y * ch, cw, 1);
         if (cell.w) mmCtx.fillRect(x * cw, y * ch, 1, ch);
-        if (y === mh-1 && cell.s) mmCtx.fillRect(x * cw, (y+1)*ch-1, cw, 1);
-        if (x === mw-1 && cell.e) mmCtx.fillRect((x+1)*cw-1, y*ch, 1, ch);
+        if (y === mh - 1 && cell.s) mmCtx.fillRect(x * cw, (y + 1) * ch - 1, cw, 1);
+        if (x === mw - 1 && cell.e) mmCtx.fillRect((x + 1) * cw - 1, y * ch, 1, ch);
       }
     }
 
@@ -336,17 +505,26 @@ export class Renderer {
     for (const [, p] of Object.entries(players)) {
       if (p.escaped) continue;
       mmCtx.beginPath();
-      mmCtx.arc(p.x * cw + cw/2, p.y * ch + ch/2, Math.max(2, cw * 0.45), 0, Math.PI * 2);
+      mmCtx.arc(p.x * cw + cw / 2, p.y * ch + ch / 2, Math.max(2, cw * 0.45), 0, Math.PI * 2);
       mmCtx.fillStyle = colors[p.index];
       mmCtx.fill();
     }
 
     // Маньяк
     mmCtx.beginPath();
-    mmCtx.arc(maniac.x * cw + cw/2, maniac.y * ch + ch/2, Math.max(2, cw * 0.45), 0, Math.PI * 2);
+    mmCtx.arc(maniac.x * cw + cw / 2, maniac.y * ch + ch / 2, Math.max(2, cw * 0.45), 0, Math.PI * 2);
     mmCtx.fillStyle = C.maniac;
     mmCtx.fill();
   }
+}
+
+// ─── Вспомогательные функции ────────────────────────────────────
+function shadeColor(hex, amount) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
+  const b = Math.min(255, Math.max(0, (num & 0xff) + amount));
+  return `rgb(${r},${g},${b})`;
 }
 
 export { CELL };
