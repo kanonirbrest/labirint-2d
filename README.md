@@ -112,3 +112,4 @@ labirint-2d/
         ├── Game.js           # Игровой цикл, ввод, интерполяция
         └── Renderer.js       # Canvas рендеринг, туман войны
 ```
+# labirint-2d
