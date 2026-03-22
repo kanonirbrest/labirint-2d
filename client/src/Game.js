@@ -13,6 +13,7 @@ export class Game {
     this.noiseEffects = [];
     this.pathHint = null;
     this.pathHintInterval = null;
+    this.maniacSpeech = null;
 
     this.heldDir = null;
     this.lastMoveSent = 0;
@@ -62,6 +63,7 @@ export class Game {
 
     this.renderer.setTheme(gameStartData.difficulty || 'medium');
     this.pathHint = null;
+    this.maniacSpeech = null;
     this._startPathHintTimer();
     this.updateNoiseBtn();
     this.startLoop();
@@ -136,8 +138,20 @@ export class Game {
     }
   }
 
-  addNoiseEffect({ x, y, radius }) {
+  addNoiseEffect({ x, y, radius, heard }) {
     this.noiseEffects.push({ x, y, radius, startTime: Date.now() });
+    if (heard) {
+      const phrases = [
+        'Откуда звук?',
+        'Кто здесь?!',
+        'Слышу тебя!',
+        'Я иду за тобой...',
+        'Не убежишь!',
+        'Попался!',
+      ];
+      const text = phrases[Math.floor(Math.random() * phrases.length)];
+      this.maniacSpeech = { text, createdAt: Date.now(), duration: 3000 };
+    }
   }
 
   // ─── Игровой цикл ─────────────────────────────────────────────
@@ -147,7 +161,7 @@ export class Game {
       this.lastTimestamp = timestamp;
 
       this.update(dt);
-      this.renderer.render(this.state, this.myId, this.noiseEffects, this.pathHint);
+      this.renderer.render(this.state, this.myId, this.noiseEffects, this.pathHint, this.maniacSpeech);
 
       this.rafId = requestAnimationFrame(loop);
     };

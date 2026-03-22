@@ -103,7 +103,7 @@ export class Renderer {
     this.fogCanvas.height    = this.canvas.height;
   }
 
-  render(state, myId, noiseEffects, pathHint) {
+  render(state, myId, noiseEffects, pathHint, maniacSpeech) {
     if (!state?.maze) return;
     const { ctx, canvas } = this;
     const W = canvas.width, H = canvas.height;
@@ -129,6 +129,7 @@ export class Renderer {
     this.drawWalls(ctx, state);
     this.drawPlayers(ctx, state, myId);
     this.drawManiac(ctx, state);
+    this.drawManiacSpeech(ctx, state.maniac, maniacSpeech);
 
     ctx.restore();
 
@@ -557,6 +558,92 @@ export class Renderer {
       ctx.fillStyle = `rgba(239,83,80,${alpha})`;
       ctx.fillRect(px - size / 2, py - size / 2, size, size);
     }
+  }
+
+  // ─── Речевое облачко маньяка ─────────────────────────────────
+  drawManiacSpeech(ctx, maniac, speech) {
+    if (!speech) return;
+    const now = Date.now();
+    const age = now - speech.createdAt;
+    if (age > speech.duration) return;
+
+    const FADE_IN = 200, FADE_OUT = 600;
+    let alpha;
+    if (age < FADE_IN) alpha = age / FADE_IN;
+    else if (age > speech.duration - FADE_OUT) alpha = (speech.duration - age) / FADE_OUT;
+    else alpha = 1;
+
+    const cx = maniac.vx;
+    const cy = maniac.vy;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    const text     = speech.text;
+    const fontSize = 13;
+    const pad      = { x: 12, y: 8 };
+    const r        = 10; // радиус скругления
+
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const tw = ctx.measureText(text).width;
+    const bw = tw + pad.x * 2;
+    const bh = fontSize + pad.y * 2;
+
+    // Позиция облачка — над головой маньяка
+    const bx = cx - bw / 2;
+    const by = cy - 68 - bh;
+    const tailX = cx;
+    const tailY = cy - 62;
+
+    // Тень
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur  = 8;
+    ctx.shadowOffsetY = 2;
+
+    // Фон облачка
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    this._roundRect(ctx, bx, by, bw, bh, r);
+    ctx.fill();
+
+    // Хвостик (треугольник вниз)
+    ctx.beginPath();
+    ctx.moveTo(tailX - 7, by + bh - 1);
+    ctx.lineTo(tailX,     tailY);
+    ctx.lineTo(tailX + 7, by + bh - 1);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Обводка
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth   = 1;
+    this._roundRect(ctx, bx, by, bw, bh, r);
+    ctx.stroke();
+
+    // Текст
+    ctx.fillStyle    = '#1a1a2e';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, by + bh / 2);
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 
   // ─── Туман войны (конус фонарика + ambient) ─────────────────
