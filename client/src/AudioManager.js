@@ -248,7 +248,10 @@ export class AudioManager {
   }
 
   // ─── Публичные методы воспроизведения ────────────────────────
-  playNoise()      { this._play('noise'); }
+  playNoise() {
+    this._play('noise');
+    this._speakPlayer();
+  }
   playManiacHear() { this._play('growl'); }
   playStep()       { this._play('step'); }
   playWin()        { this._play('win'); }
@@ -295,6 +298,28 @@ export class AudioManager {
       try { n.osc1.stop(); n.osc2.stop(); n.lfo.stop(); } catch (_) {}
     }, 1100);
     this.ambientNodes = null;
+  }
+
+  // ─── Крик игрока при нажатии «Шум» ──────────────────────────
+  _speakPlayer() {
+    if (this.muted || !window.speechSynthesis) return;
+    const phrases = [
+      'Эй, иди сюда!',
+      'Я здесь!',
+      'Иди ко мне!',
+    ];
+    const text = phrases[Math.floor(Math.random() * phrases.length)];
+    try {
+      window.speechSynthesis.cancel();
+      const u    = new SpeechSynthesisUtterance(text);
+      u.lang     = 'ru-RU';
+      u.rate     = 1.05;   // чуть быстрее — взволнованный голос
+      u.pitch    = 1.3;    // выше нормы — испуг
+      u.volume   = 1.0;
+      if (this._ruVoice) u.voice = this._ruVoice;
+      u.onerror  = () => {};
+      window.speechSynthesis.speak(u);
+    } catch (_) {}
   }
 
   // ─── Речь маньяка ────────────────────────────────────────────
