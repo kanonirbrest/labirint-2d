@@ -5,11 +5,18 @@ export class AudioManager {
     this.muted   = false;
     this.ambientNodes = null;
     this._lastHeartbeat = 0;
+    this._reverbBuf = null; // кэш буфера реверба — создаётся один раз
 
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     } catch (e) {
       this.enabled = false;
+    }
+
+    // Загружаем голоса заранее, чтобы к моменту речи они были готовы
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.addEventListener('voiceschanged', () => {});
     }
   }
 
@@ -106,43 +113,43 @@ export class AudioManager {
   // ── Маньяк услышал шум ───────────────────────────────────────
   playManiacHear() {
     if (!this.active) return;
-    this.resume();
-    const ctx = this.ctx, now = ctx.currentTime;
+    try {
+      this.resume();
+      const ctx = this.ctx, now = ctx.currentTime;
+      const rev = this._makeReverb();
 
-    // Низкий искажённый рык
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(130, now);
-    osc.frequency.linearRampToValueAtTime(42, now + 1.0);
+      // Низкий искажённый рык
+      const osc  = ctx.createOscillator();
+      osc.type   = 'sawtooth';
+      osc.frequency.setValueAtTime(130, now);
+      osc.frequency.linearRampToValueAtTime(42, now + 1.0);
 
-    const dist = ctx.createWaveShaper();
-    dist.curve = distortionCurve(250);
-    dist.oversample = '4x';
+      const dist = ctx.createWaveShaper();
+      dist.curve = distortionCurve(250);
+      dist.oversample = '4x';
 
-    const rev  = this._makeReverb(1.5, 2);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.5, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.5, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
 
-    osc.connect(dist);
-    dist.connect(rev); rev.connect(gain);
-    dist.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now); osc.stop(now + 1.0);
+      osc.connect(dist);
+      dist.connect(rev); rev.connect(gain);
+      dist.connect(gain);                  // dry
+      gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 1.0);
 
-    // Металлический скрежет/скрип
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'square';
-    osc2.frequency.setValueAtTime(280, now + 0.1);
-    osc2.frequency.exponentialRampToValueAtTime(60, now + 0.5);
-
-    const gain2 = ctx.createGain();
-    gain2.gain.setValueAtTime(0.0, now + 0.1);
-    gain2.gain.linearRampToValueAtTime(0.18, now + 0.2);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-
-    osc2.connect(gain2); gain2.connect(ctx.destination);
-    osc2.start(now + 0.1); osc2.stop(now + 0.5);
+      // Металлический скрежет
+      const osc2  = ctx.createOscillator();
+      osc2.type   = 'square';
+      osc2.frequency.setValueAtTime(280, now + 0.1);
+      osc2.frequency.exponentialRampToValueAtTime(60, now + 0.5);
+      const gain2 = ctx.createGain();
+      gain2.gain.setValueAtTime(0.0,  now + 0.1);
+      gain2.gain.linearRampToValueAtTime(0.18, now + 0.2);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc2.connect(gain2); gain2.connect(ctx.destination);
+      osc2.start(now + 0.1); osc2.stop(now + 0.5);
+    } catch (_) {}
   }
 
   // ── Сердцебиение (маньяк близко) ─────────────────────────────
@@ -233,145 +240,168 @@ export class AudioManager {
   // ── Речь маньяка (Web Speech API + Web Audio атмосфера) ─────
   speakManiac(text) {
     if (this.muted || !window.speechSynthesis) return;
-    this.resume();
+    try {
+      this.resume();
+      window.speechSynthesis.cancel();
 
-    window.speechSynthesis.cancel();
+      // Хриплое дыхание перед словами
+      this._maniacBreath();
 
-    // 1. Хриплое дыхание перед словами
-    this._maniacBreath();
+      // Угрожающий дрон
+      const stopAtmos = this._startManiacDrone();
 
-    // 2. Угрожающий дрон во время речи
-    const stopAtmos = this._startManiacDrone();
+      // Голос — после вздоха
+      setTimeout(() => {
+        try {
+          const voices  = window.speechSynthesis.getVoices();
+          const ruVoice = voices.find((v) => v.lang.startsWith('ru') && /male/i.test(v.name))
+                       || voices.find((v) => v.lang.startsWith('ru'));
 
-    // 3. Голос — после вздоха, с минимальным питчем
-    setTimeout(() => {
-      const voices  = window.speechSynthesis.getVoices();
-      const ruVoice = voices.find((v) => v.lang.startsWith('ru') && /male/i.test(v.name))
-                   || voices.find((v) => v.lang.startsWith('ru'));
+          const u    = new SpeechSynthesisUtterance(text);
+          u.lang     = 'ru-RU';
+          u.rate     = 0.6;
+          u.pitch    = 0.1; // 0.0 игнорируется некоторыми движками; 0.1 — минимально надёжное
+          u.volume   = 1.0;
+          if (ruVoice) u.voice = ruVoice;
+          u.onend = () => {
+            stopAtmos();
+            // Тихое эхо
+            try {
+              const echo  = new SpeechSynthesisUtterance(text);
+              echo.lang   = 'ru-RU';
+              echo.rate   = 0.5;
+              echo.pitch  = 0.1;
+              echo.volume = 0.15;
+              if (ruVoice) echo.voice = ruVoice;
+              window.speechSynthesis.speak(echo);
+            } catch (_) {}
+          };
+          u.onerror = () => stopAtmos();
 
-      const speak = (txt, rate, pitch, vol, onend) => {
-        const u  = new SpeechSynthesisUtterance(txt);
-        u.lang   = 'ru-RU';
-        u.rate   = rate;
-        u.pitch  = pitch;
-        u.volume = vol;
-        if (ruVoice) u.voice = ruVoice;
-        if (onend) u.onend = onend;
-        window.speechSynthesis.speak(u);
-      };
-
-      // Основной голос — медленно, максимально низко
-      speak(text, 0.55, 0.0, 1.0, () => {
-        stopAtmos();
-        // Затухающее эхо той же фразы
-        setTimeout(() => speak(text, 0.48, 0.0, 0.18), 180);
-      });
-    }, 550);
+          window.speechSynthesis.speak(u);
+        } catch (_) {}
+      }, 500);
+    } catch (_) {}
   }
 
   // Хриплое дыхание + низкий стон перед речью
   _maniacBreath() {
     if (!this.active) return;
-    const ctx = this.ctx, now = ctx.currentTime;
+    try {
+      const ctx = this.ctx, now = ctx.currentTime;
+      const rev = this._makeReverb();
 
-    // Шум дыхания
-    const size = Math.floor(ctx.sampleRate * 0.55);
-    const buf  = ctx.createBuffer(1, size, ctx.sampleRate);
-    const d    = buf.getChannelData(0);
-    for (let i = 0; i < size; i++) {
-      const env = Math.pow(Math.sin(Math.PI * i / size), 0.6);
-      d[i] = (Math.random() * 2 - 1) * env;
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
+      // Шум дыхания
+      const size = Math.floor(ctx.sampleRate * 0.5);
+      const buf  = ctx.createBuffer(1, size, ctx.sampleRate);
+      const d    = buf.getChannelData(0);
+      for (let i = 0; i < size; i++) {
+        const env = Math.pow(Math.sin(Math.PI * i / size), 0.6);
+        d[i] = (Math.random() * 2 - 1) * env;
+      }
+      const src  = ctx.createBufferSource();
+      src.buffer = buf;
 
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 1.2;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 1.2;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 200;
 
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass'; hp.frequency.value = 200;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.5, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
 
-    const rev  = this._makeReverb(1.8, 2.5);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.55, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      // wet + dry
+      src.connect(bp); bp.connect(hp);
+      hp.connect(rev);  rev.connect(gain);
+      hp.connect(gain);                    // dry
+      gain.connect(ctx.destination);
+      src.start(now);
 
-    src.connect(bp); bp.connect(hp); hp.connect(rev); rev.connect(gain);
-    gain.connect(ctx.destination);
-    src.start(now);
+      // Низкий стон-рык
+      const osc  = ctx.createOscillator();
+      osc.type   = 'sawtooth';
+      osc.frequency.setValueAtTime(90, now);
+      osc.frequency.linearRampToValueAtTime(48, now + 0.5);
 
-    // Низкий стон-рык
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(90, now);
-    osc.frequency.linearRampToValueAtTime(48, now + 0.55);
+      const dist = ctx.createWaveShaper();
+      dist.curve = distortionCurve(350);
+      dist.oversample = '4x';
 
-    const dist = ctx.createWaveShaper();
-    dist.curve = distortionCurve(350);
-    dist.oversample = '4x';
+      const gOsc = ctx.createGain();
+      gOsc.gain.setValueAtTime(0.0, now);
+      gOsc.gain.linearRampToValueAtTime(0.35, now + 0.15);
+      gOsc.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
 
-    const gOsc = ctx.createGain();
-    gOsc.gain.setValueAtTime(0.0, now);
-    gOsc.gain.linearRampToValueAtTime(0.38, now + 0.15);
-    gOsc.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-
-    osc.connect(dist); dist.connect(this._makeReverb(1.2, 2));
-    dist.connect(gOsc); gOsc.connect(ctx.destination);
-    osc.start(now); osc.stop(now + 0.55);
+      // wet + dry
+      osc.connect(dist);
+      dist.connect(rev); rev.connect(gOsc);
+      dist.connect(gOsc);                  // dry
+      gOsc.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.5);
+    } catch (_) {}
   }
 
   // Угрожающий дрон во время речи маньяка; возвращает функцию остановки
   _startManiacDrone() {
     if (!this.active) return () => {};
-    const ctx = this.ctx, now = ctx.currentTime;
+    try {
+      const ctx = this.ctx, now = ctx.currentTime;
+      const rev = this._makeReverb();
 
-    const osc1 = ctx.createOscillator();
-    osc1.type = 'sawtooth'; osc1.frequency.value = 38;
+      const osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth'; osc1.frequency.value = 38;
 
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'sine'; osc2.frequency.value = 57;
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'sine'; osc2.frequency.value = 57;
 
-    // Вибрато
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 5.5;
-    const lfoG = ctx.createGain(); lfoG.gain.value = 1.8;
-    lfo.connect(lfoG); lfoG.connect(osc1.frequency);
+      const lfo  = ctx.createOscillator();
+      lfo.frequency.value = 5.5;
+      const lfoG = ctx.createGain(); lfoG.gain.value = 1.8;
+      lfo.connect(lfoG); lfoG.connect(osc1.frequency);
 
-    const dist = ctx.createWaveShaper();
-    dist.curve = distortionCurve(120);
+      const dist = ctx.createWaveShaper();
+      dist.curve = distortionCurve(120);
 
-    const rev  = this._makeReverb(2.5, 3);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.14, now + 0.4);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.14, now + 0.4);
 
-    osc1.connect(dist); dist.connect(rev); rev.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-    osc1.start(now); osc2.start(now); lfo.start(now);
+      osc1.connect(dist);
+      dist.connect(rev);  rev.connect(gain);
+      dist.connect(gain);                  // dry
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start(now); osc2.start(now); lfo.start(now);
 
-    return () => {
-      const t = ctx.currentTime;
-      gain.gain.linearRampToValueAtTime(0, t + 0.6);
-      setTimeout(() => {
-        try { osc1.stop(); osc2.stop(); lfo.stop(); } catch (_) {}
-      }, 700);
-    };
+      return () => {
+        try {
+          const t = ctx.currentTime;
+          gain.gain.linearRampToValueAtTime(0, t + 0.6);
+          setTimeout(() => {
+            try { osc1.stop(); osc2.stop(); lfo.stop(); } catch (_) {}
+          }, 700);
+        } catch (_) {}
+      };
+    } catch (_) { return () => {}; }
   }
 
-  // Синтетический реверб через convolver
-  _makeReverb(duration = 2, decay = 2) {
-    const ctx = this.ctx;
-    const sr   = ctx.sampleRate;
-    const size = Math.floor(sr * duration);
-    const buf  = ctx.createBuffer(2, size, sr);
-    for (let c = 0; c < 2; c++) {
-      const ch = buf.getChannelData(c);
-      for (let i = 0; i < size; i++)
-        ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / size, decay);
+  // Синтетический реверб — буфер кэшируется, создаётся один раз
+  _makeReverb() {
+    if (!this.ctx) return this.ctx?.createGain() ?? null;
+    if (!this._reverbBuf) {
+      const sr   = this.ctx.sampleRate;
+      const size = Math.floor(sr * 2.0); // 2 секунды
+      const buf  = this.ctx.createBuffer(2, size, sr);
+      for (let c = 0; c < 2; c++) {
+        const ch = buf.getChannelData(c);
+        for (let i = 0; i < size; i++)
+          ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / size, 2.5);
+      }
+      this._reverbBuf = buf;
     }
-    const conv = ctx.createConvolver();
-    conv.buffer = buf;
+    const conv  = this.ctx.createConvolver();
+    conv.buffer = this._reverbBuf;
     return conv;
   }
 
