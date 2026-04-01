@@ -20,6 +20,7 @@ export class Game {
     this.heldDir = null;
     this.lastMoveSent = 0;
     this.lastNoiseSent = 0;
+    this.tapEffects = [];
 
     this.rafId = null;
     this.lastTimestamp = 0;
@@ -27,7 +28,7 @@ export class Game {
     this._setupKeyboard();
     this._setupDpad();
     this._setupNoiseBtn();
-    this._setupSwipe();
+    this._setupTapToMove();
   }
 
   // ─── Инициализация ────────────────────────────────────────────
@@ -175,7 +176,7 @@ export class Game {
       this.lastTimestamp = timestamp;
 
       this.update(dt);
-      this.renderer.render(this.state, this.myId, this.noiseEffects, this.pathHint, this.maniacSpeech);
+      this.renderer.render(this.state, this.myId, this.noiseEffects, this.pathHint, this.maniacSpeech, this.tapEffects);
 
       this.rafId = requestAnimationFrame(loop);
     };
@@ -186,9 +187,10 @@ export class Game {
   update(dt) {
     if (!this.state) return;
 
-    // Очищаем устаревшие эффекты шума
+    // Очищаем устаревшие эффекты
     const now = Date.now();
     this.noiseEffects = this.noiseEffects.filter((e) => now - e.startTime < 2000);
+    this.tapEffects   = this.tapEffects.filter((e)   => now - e.createdAt < 700);
 
     // Интерполяция игроков к целевым позициям
     for (const p of Object.values(this.state.players)) {
@@ -317,33 +319,84 @@ export class Game {
     btn.classList.toggle('cooldown', !ready);
   }
 
-  // ─── Управление: свайпы ───────────────────────────────────────
-  _setupSwipe() {
-    let sx = 0, sy = 0;
+  // ─── Управление: тап / свайп по экрану ───────────────────────
+  _setupTapToMove() {
+    const canvas = this.renderer.canvas;
+    let sx = 0, sy = 0, scx = 0, scy = 0;
 
-    document.addEventListener('touchstart', (e) => {
-      // Игнорируем касания в зоне d-pad и кнопки шума
-      if (e.target.closest('#controls')) return;
+    // Запоминаем точку касания
+    const onStart = (clientX, clientY, target) => {
+      if (target.closest('#controls') || target.closest('#hud')) return;
+      sx = clientX; sy = clientY;
+      // Canvas-координаты (учитываем масштаб CSS)
+      const r = canvas.getBoundingClientRect();
+      scx = (clientX - r.left) * (canvas.width  / r.width);
+      scy = (clientY - r.top)  * (canvas.height / r.height);
+    };
+
+    const onEnd = (clientX, clientY, target) => {
+      if (target.closest('#controls') || target.closest('#hud')) return;
+      const dx = clientX - sx;
+      const dy = clientY - sy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      let dir;
+      if (dist < 18) {
+        // ── Тап: направление от центра экрана ──────────────────
+        const r   = canvas.getBoundingClientRect();
+        const cx  = (clientX - r.left) * (canvas.width  / r.width);
+        const cy  = (clientY - r.top)  * (canvas.height / r.height);
+        const ddx = cx - canvas.width  / 2;
+        const ddy = cy - canvas.height / 2;
+        if (Math.abs(ddx) < 10 && Math.abs(ddy) < 10) return; // слишком близко к центру
+        dir = Math.abs(ddx) > Math.abs(ddy)
+          ? (ddx > 0 ? 'right' : 'left')
+          : (ddy > 0 ? 'down'  : 'up');
+
+        // Ripple-эффект в точке касания
+        this.tapEffects.push({ x: cx, y: cy, dir, createdAt: Date.now() });
+      } else {
+        // ── Свайп: направление по дельте ───────────────────────
+        if (dist < 20) return;
+        dir = Math.abs(dx) > Math.abs(dy)
+          ? (dx > 0 ? 'right' : 'left')
+          : (dy > 0 ? 'down'  : 'up');
+
+        // Ripple в середине свайпа
+        const r  = canvas.getBoundingClientRect();
+        const mx = (((sx + clientX) / 2) - r.left) * (canvas.width  / r.width);
+        const my = (((sy + clientY) / 2) - r.top)  * (canvas.height / r.height);
+        this.tapEffects.push({ x: mx, y: my, dir, createdAt: Date.now() });
+      }
+
+      const now = Date.now();
+      if (now - this.lastMoveSent >= MOVE_INTERVAL) {
+        send('move', { direction: dir });
+        this.lastMoveSent = now;
+        if (this.myId && this.state?.players[this.myId])
+          this.state.players[this.myId].lastDir = dir;
+        this.audio.playStep();
+      }
+    };
+
+    // Touch-события
+    canvas.addEventListener('touchstart', (e) => {
       const t = e.touches[0];
-      sx = t.clientX;
-      sy = t.clientY;
+      onStart(t.clientX, t.clientY, e.target);
     }, { passive: true });
 
-    document.addEventListener('touchend', (e) => {
-      if (e.target.closest('#controls')) return;
+    canvas.addEventListener('touchend', (e) => {
       const t = e.changedTouches[0];
-      const dx = t.clientX - sx;
-      const dy = t.clientY - sy;
-      const abs = Math.max(Math.abs(dx), Math.abs(dy));
-      if (abs < 20) return;
-
-      const dir = Math.abs(dx) > Math.abs(dy)
-        ? (dx > 0 ? 'right' : 'left')
-        : (dy > 0 ? 'down' : 'up');
-
-      send('move', { direction: dir });
-      this.lastMoveSent = Date.now();
+      onEnd(t.clientX, t.clientY, e.target);
     }, { passive: true });
+
+    // Mouse-события (для тестирования на ПК)
+    canvas.addEventListener('mousedown', (e) => {
+      onStart(e.clientX, e.clientY, e.target);
+    });
+    canvas.addEventListener('mouseup', (e) => {
+      onEnd(e.clientX, e.clientY, e.target);
+    });
   }
 }
 

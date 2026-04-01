@@ -103,7 +103,7 @@ export class Renderer {
     this.fogCanvas.height    = this.canvas.height;
   }
 
-  render(state, myId, noiseEffects, pathHint, maniacSpeech) {
+  render(state, myId, noiseEffects, pathHint, maniacSpeech, tapEffects) {
     if (!state?.maze) return;
     const { ctx, canvas } = this;
     const W = canvas.width, H = canvas.height;
@@ -135,6 +135,61 @@ export class Renderer {
 
     if (!this.dayMode) this.drawFogOfWar(state, myId, camX, camY);
     this.drawMinimap(state, myId);
+    if (tapEffects?.length) this.drawTapEffects(ctx, tapEffects);
+  }
+
+  // ─── Ripple-эффект тапа (screen-space) ──────────────────────
+  drawTapEffects(ctx, effects) {
+    const now = Date.now();
+    const DUR = 680; // мс полной анимации
+
+    for (const fx of effects) {
+      const t = Math.min(1, (now - fx.createdAt) / DUR); // 0→1
+      const alpha = 1 - t;
+
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.75;
+
+      // Три кольца с разной фазой расширения
+      for (let i = 0; i < 3; i++) {
+        const phase = t - i * 0.18;
+        if (phase <= 0) continue;
+        const r = phase * 52;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, r, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = Math.max(0.5, 2.5 * (1 - phase));
+        ctx.stroke();
+      }
+
+      // Маленький заполненный круг в центре (быстро исчезает)
+      if (t < 0.3) {
+        const cr = (1 - t / 0.3) * 7;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, cr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fill();
+      }
+
+      // Стрелка-указатель направления (слегка прозрачная)
+      ctx.globalAlpha = alpha * 0.55;
+      ctx.save();
+      ctx.translate(fx.x, fx.y);
+      ctx.rotate(dirAngle(fx.dir));
+
+      const dist = 28 + t * 18; // стрелка улетает вперёд
+      const aw = 7, ah = 12;
+      ctx.beginPath();
+      ctx.moveTo(dist,          0);
+      ctx.lineTo(dist - ah, -aw);
+      ctx.lineTo(dist - ah,  aw);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fill();
+
+      ctx.restore();
+      ctx.restore();
+    }
   }
 
   // ─── Пол ────────────────────────────────────────────────────
