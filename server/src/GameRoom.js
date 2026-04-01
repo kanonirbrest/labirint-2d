@@ -56,9 +56,10 @@ export class GameRoom {
   addPlayer(socket, username) {
     const index = this.players.size;
     const { mazeW, mazeH } = this.cfg;
+    // Оба игрока стартуют слева: один сверху, другой снизу — выход справа по центру
     const spawns = [
       { x: 1, y: 1 },
-      { x: mazeW - 2, y: mazeH - 2 },
+      { x: 1, y: mazeH - 2 },
     ];
 
     this.players.set(socket.id, {
@@ -106,7 +107,7 @@ export class GameRoom {
     this.exit = { x: mazeW - 1, y: Math.floor(mazeH / 2) };
     this.maze[this.exit.y][this.exit.x].e = false;
 
-    const spawns = [{ x: 1, y: 1 }, { x: mazeW - 2, y: mazeH - 2 }];
+    const spawns = [{ x: 1, y: 1 }, { x: 1, y: mazeH - 2 }];
     let i = 0;
     for (const player of this.players.values()) {
       player.x = spawns[i].x;
@@ -124,6 +125,8 @@ export class GameRoom {
       targetX: null,
       targetY: null,
       chaseExpiry: null,
+      confusedSteps: 0,       // сколько случайных шагов осталось
+      lastConfusionCheck: 0,  // когда последний раз проверяли путаницу
     };
 
     this.gameState = 'playing';
@@ -207,24 +210,74 @@ export class GameRoom {
   }
 
   wander() {
+    const targets = [...this.players.values()].filter((p) => !p.escaped);
+    if (targets.length === 0) return;
+
+    // Если уже сбился — делаем случайный шаг
+    if (this.maniac.confusedSteps > 0) {
+      this._randomStep();
+      this.maniac.confusedSteps--;
+      return;
+    }
+
+    // BFS к ближайшему игроку
+    let bestPath = null;
+    let nearestPlayer = null;
+    for (const player of targets) {
+      const path = findPath(
+        this.maze,
+        { x: this.maniac.x, y: this.maniac.y },
+        { x: player.x, y: player.y }
+      );
+      if (path && (!bestPath || path.length < bestPath.length)) {
+        bestPath = path;
+        nearestPlayer = player;
+      }
+    }
+
+    // Раз в 2.5 секунды проверяем — не потерял ли маньяк след
+    // Срабатывает только если ближайший игрок долго стоит на месте
+    const now = Date.now();
+    if (nearestPlayer && now - this.maniac.lastConfusionCheck > 2500) {
+      this.maniac.lastConfusionCheck = now;
+      const stillMs = now - nearestPlayer.lastMoveTime;
+      if (stillMs > 4000) {
+        // Шанс замешательства растёт с 0% до 28% за 20 секунд неподвижности
+        const chance = Math.min(0.28, (stillMs - 4000) / 20000);
+        if (Math.random() < chance) {
+          // Маньяк теряет след на 3–6 случайных шагов
+          this.maniac.confusedSteps = 3 + Math.floor(Math.random() * 4);
+          this._randomStep();
+          this.maniac.confusedSteps--;
+          return;
+        }
+      }
+    }
+
+    if (bestPath && bestPath.length > 1) {
+      this.maniac.x = bestPath[1].x;
+      this.maniac.y = bestPath[1].y;
+    }
+  }
+
+  _randomStep() {
     const { x, y } = this.maniac;
     const { mazeW, mazeH } = this.cfg;
     const cell = this.maze[y][x];
     const dirs = [
       { dx: 0, dy: -1, wall: 'n' },
-      { dx: 1, dy: 0,  wall: 'e' },
-      { dx: 0, dy: 1,  wall: 's' },
+      { dx: 1, dy:  0, wall: 'e' },
+      { dx: 0, dy:  1, wall: 's' },
       { dx: -1, dy: 0, wall: 'w' },
     ].filter(({ wall, dx, dy }) => {
       if (cell[wall]) return false;
       const nx = x + dx, ny = y + dy;
       return nx >= 0 && nx < mazeW && ny >= 0 && ny < mazeH;
     });
-
     if (dirs.length > 0) {
-      const chosen = dirs[Math.floor(Math.random() * dirs.length)];
-      this.maniac.x += chosen.dx;
-      this.maniac.y += chosen.dy;
+      const d = dirs[Math.floor(Math.random() * dirs.length)];
+      this.maniac.x += d.dx;
+      this.maniac.y += d.dy;
     }
   }
 

@@ -55,20 +55,21 @@ export function generateMaze(width, height, style = 'normal') {
     if (!moved) stack.pop();
   }
 
-  // Для hard — добавляем петли (убираем случайные стены внутри)
-  // Это создаёт ложные пути и дезориентирует
-  if (style === 'hard') {
-    const loops = Math.floor(width * height * 0.07); // ~7% дополнительных проходов
-    for (let i = 0; i < loops; i++) {
-      const x = 1 + Math.floor(Math.random() * (width  - 2));
-      const y = 1 + Math.floor(Math.random() * (height - 2));
-      const dir = ['n', 'e', 's', 'w'][Math.floor(Math.random() * 4)];
-      const { dx, dy } = deltas[dir];
-      const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        cells[y][x][dir] = false;
-        cells[ny][nx][opposite[dir]] = false;
-      }
+  // Добавляем петли для всех стилей (больше проходов = меньше тупиков)
+  // easy: ~18% — очень открытый лабиринт
+  // normal: ~14% — заметно больше развилок
+  // hard: ~18% — огромный с кучей ложных путей
+  const loopPct = style === 'easy' ? 0.18 : style === 'normal' ? 0.14 : 0.18;
+  const loops = Math.floor(width * height * loopPct);
+  for (let i = 0; i < loops; i++) {
+    const x = 1 + Math.floor(Math.random() * (width  - 2));
+    const y = 1 + Math.floor(Math.random() * (height - 2));
+    const dir = ['n', 'e', 's', 'w'][Math.floor(Math.random() * 4)];
+    const { dx, dy } = deltas[dir];
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+      cells[y][x][dir] = false;
+      cells[ny][nx][opposite[dir]] = false;
     }
   }
 
