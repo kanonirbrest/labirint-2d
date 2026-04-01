@@ -2,34 +2,37 @@ import { generateMaze, findPath, distance } from './MazeGenerator.js';
 
 const DIFFICULTY = {
   easy: {
-    mazeW: 13, mazeH: 13,  // большой, но прямые коридоры — легко ориентироваться
+    mazeW: 13, mazeH: 13,
     mazeStyle: 'easy',
     tickMs: 100,
-    maniacMoveTicks: 4,    // 400ms — маньяк МЕДЛЕННЕЕ игрока
+    maniacMoveTicks: 13,   // 1300ms/шаг — игрок в 4.6× быстрее (280ms)
     playerMoveCooldown: 280,
     noiseRadius: 11,
     noiseCooldown: 2000,
     chaseDuration: 5000,
+    maniacWanderRandomness: 0.25, // 25% случайных шагов при поиске
   },
   medium: {
-    mazeW: 19, mazeH: 19,  // большой, стандартный DFS
+    mazeW: 19, mazeH: 19,
     mazeStyle: 'normal',
     tickMs: 100,
-    maniacMoveTicks: 2,    // 200ms — маньяк в 1.4× быстрее
+    maniacMoveTicks: 9,    // 900ms/шаг — игрок в 3.2× быстрее
     playerMoveCooldown: 280,
     noiseRadius: 10,
     noiseCooldown: 4000,
     chaseDuration: 9000,
+    maniacWanderRandomness: 0.18,
   },
   hard: {
-    mazeW: 27, mazeH: 27,  // огромный, запутанный + петли
+    mazeW: 27, mazeH: 27,
     mazeStyle: 'hard',
     tickMs: 100,
-    maniacMoveTicks: 1,    // 100ms — маньяк в 2.8× быстрее
+    maniacMoveTicks: 6,    // 600ms/шаг — игрок в 2.1× быстрее
     playerMoveCooldown: 280,
     noiseRadius: 8,
     noiseCooldown: 6000,
     chaseDuration: 14000,
+    maniacWanderRandomness: 0.10,
   },
 };
 
@@ -213,10 +216,16 @@ export class GameRoom {
     const targets = [...this.players.values()].filter((p) => !p.escaped);
     if (targets.length === 0) return;
 
-    // Если уже сбился — делаем случайный шаг
+    // Если уже в замешательстве — случайный шаг
     if (this.maniac.confusedSteps > 0) {
       this._randomStep();
       this.maniac.confusedSteps--;
+      return;
+    }
+
+    // Иногда маньяк берёт случайный шаг вместо оптимального (несовершенный BFS)
+    if (Math.random() < (this.cfg.maniacWanderRandomness ?? 0.15)) {
+      this._randomStep();
       return;
     }
 
@@ -235,17 +244,14 @@ export class GameRoom {
       }
     }
 
-    // Раз в 2.5 секунды проверяем — не потерял ли маньяк след
-    // Срабатывает только если ближайший игрок долго стоит на месте
+    // Раз в 2.5 секунды проверяем замешательство от неподвижности игрока
     const now = Date.now();
     if (nearestPlayer && now - this.maniac.lastConfusionCheck > 2500) {
       this.maniac.lastConfusionCheck = now;
       const stillMs = now - nearestPlayer.lastMoveTime;
       if (stillMs > 4000) {
-        // Шанс замешательства растёт с 0% до 28% за 20 секунд неподвижности
         const chance = Math.min(0.28, (stillMs - 4000) / 20000);
         if (Math.random() < chance) {
-          // Маньяк теряет след на 3–6 случайных шагов
           this.maniac.confusedSteps = 3 + Math.floor(Math.random() * 4);
           this._randomStep();
           this.maniac.confusedSteps--;
