@@ -443,7 +443,7 @@ export class GameRoom {
       if (this.maniac.noiseHeardCount >= 3 && !this.maniac.enraged) {
         this.maniac.enraged       = true;
         this.maniac.enragedUntil  = now + 10000; // 10 секунд ярости
-        this.maniac.wallsCanBreak = 3;            // может сломать до 3 стен
+        this.maniac.wallsCanBreak = 1;            // может сломать 1 стену
         this.maniac.noiseHeardCount = 0;
         this.io.to(this.roomCode).emit('maniacEnraged', {
           x: this.maniac.x, y: this.maniac.y,
