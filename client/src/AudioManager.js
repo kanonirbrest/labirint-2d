@@ -397,17 +397,26 @@ export class AudioManager {
   // ─── Публичные методы воспроизведения ────────────────────────
   playNoise() {
     this._play('noise');
-    // MP3 крик игрока
+    // MP3 крик игрока — запоминаем когда закончится (+400мс паузы)
     const mp3 = Math.random() < 0.5 ? 'player_1' : 'player_2';
-    this._play(mp3);
+    const buf = this._buffers[mp3];
+    if (buf) {
+      this._playerVoiceEnd = Date.now() + buf.duration * 1000 + 400;
+      this._play(mp3);
+    }
   }
 
   playManiacHear() {
-    // Один из трёх MP3 маньяка случайно, fallback — синтезированный рык
-    const names = ['maniac_1', 'maniac_2', 'maniac_3'];
-    const mp3   = names[Math.floor(Math.random() * names.length)];
-    if (this._buffers[mp3]) this._play(mp3);
-    else this._play('growl');
+    // Ждём пока игрок замолчит, потом маньяк отвечает
+    const waitMs = Math.max(0, (this._playerVoiceEnd || 0) - Date.now());
+    const run = () => {
+      const names = ['maniac_1', 'maniac_2', 'maniac_3'];
+      const mp3   = names[Math.floor(Math.random() * names.length)];
+      if (this._buffers[mp3]) this._play(mp3);
+      else this._play('growl');
+    };
+    if (waitMs > 0) setTimeout(run, waitMs);
+    else run();
   }
 
   playEnraged() {
