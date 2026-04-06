@@ -69,22 +69,26 @@ export class AudioManager {
   // Запустить случайные фоновые звуки во время игры
   startAmbientSounds() {
     this._stopAmbientSounds();
+    this._ambientPlaying = false;
     this._scheduleAmbient();
   }
 
   _scheduleAmbient() {
-    // Следующий фоновый звук через 12–28 секунд
-    const delay = 12000 + Math.random() * 16000;
+    // Пауза между звуками: 15–30 секунд ПОСЛЕ окончания предыдущего
+    const delay = 15000 + Math.random() * 15000;
     this._ambientTimer = setTimeout(() => {
       if (!this.muted) this._playRandomAmbient();
-      this._scheduleAmbient();
+      // Следующий запланируем только после окончания текущего (см. onended)
     }, delay);
   }
 
   _playRandomAmbient() {
+    // Не запускаем если предыдущий ещё играет
+    if (this._ambientPlaying || !this.active) return;
+
     const pool = ['amb_laugh', 'amb_rage', 'amb_howl', 'amb_steps']
       .filter((k) => !!this._buffers[k]);
-    if (!pool.length || !this.active) return;
+    if (!pool.length) return;
 
     const name = pool[Math.floor(Math.random() * pool.length)];
     const buf  = this._buffers[name];
@@ -93,14 +97,24 @@ export class AudioManager {
       const src  = this.ctx.createBufferSource();
       src.buffer = buf;
 
-      // Очень тихо — фоновый шум, не должен перебивать основные звуки
       const gain = this.ctx.createGain();
       gain.gain.value = 0.18;
 
       src.connect(gain);
       gain.connect(this.ctx.destination);
+
+      this._ambientPlaying = true;
+      src.onended = () => {
+        this._ambientPlaying = false;
+        // Планируем следующий только после окончания этого
+        if (!this.muted) this._scheduleAmbient();
+      };
+
       src.start(this.ctx.currentTime);
-    } catch (_) {}
+    } catch (_) {
+      this._ambientPlaying = false;
+      this._scheduleAmbient();
+    }
   }
 
   _stopAmbientSounds() {
@@ -108,6 +122,7 @@ export class AudioManager {
       clearTimeout(this._ambientTimer);
       this._ambientTimer = null;
     }
+    this._ambientPlaying = false;
   }
 
   // ─── Pre-render всех звуков ───────────────────────────────────
