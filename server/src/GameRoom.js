@@ -5,9 +5,9 @@ const DIFFICULTY = {
     mazeW: 13, mazeH: 13,
     mazeStyle: 'easy',
     tickMs: 100,
-    maniacMoveTicks: 13,   // 1300ms/шаг — игрок в 4.6× быстрее (280ms)
+    maniacMoveTicks: 11,   // 1100ms/шаг — +15% скорости
     playerMoveCooldown: 280,
-    noiseRadius: 11,
+    noiseRadius: 13,       // +20% радиус
     noiseCooldown: 2000,
     chaseDuration: 5000,
     maniacWanderRandomness: 0.25, // 25% случайных шагов при поиске
@@ -16,9 +16,9 @@ const DIFFICULTY = {
     mazeW: 19, mazeH: 19,
     mazeStyle: 'normal',
     tickMs: 100,
-    maniacMoveTicks: 9,    // 900ms/шаг — игрок в 3.2× быстрее
+    maniacMoveTicks: 8,    // 800ms/шаг — +15% скорости
     playerMoveCooldown: 280,
-    noiseRadius: 10,
+    noiseRadius: 12,       // +20% радиус
     noiseCooldown: 4000,
     chaseDuration: 9000,
     maniacWanderRandomness: 0.18,
@@ -27,9 +27,9 @@ const DIFFICULTY = {
     mazeW: 27, mazeH: 27,
     mazeStyle: 'hard',
     tickMs: 100,
-    maniacMoveTicks: 6,    // 600ms/шаг — игрок в 2.1× быстрее
+    maniacMoveTicks: 5,    // 500ms/шаг — +15% скорости
     playerMoveCooldown: 280,
-    noiseRadius: 8,
+    noiseRadius: 10,       // +20% радиус
     noiseCooldown: 6000,
     chaseDuration: 14000,
     maniacWanderRandomness: 0.10,
