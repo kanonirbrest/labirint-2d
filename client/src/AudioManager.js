@@ -23,10 +23,29 @@ export class AudioManager {
     }
 
     this._preloadAll();
+    this._loadMp3s();
     this._initVoices();
   }
 
   get active() { return this.enabled && !this.muted && !!this.ctx; }
+
+  // ─── Загрузка MP3 файлов ─────────────────────────────────────
+  async _loadMp3s() {
+    const files = {
+      maniac_1: '/sounds/maniac_1.mp3',
+      maniac_2: '/sounds/maniac_2.mp3',
+      maniac_3: '/sounds/maniac_3.mp3',
+      player_1: '/sounds/player_1.mp3',
+      player_2: '/sounds/player_2.mp3',
+    };
+    await Promise.all(Object.entries(files).map(async ([name, url]) => {
+      try {
+        const res  = await fetch(url);
+        const ab   = await res.arrayBuffer();
+        this._buffers[name] = await this.ctx.decodeAudioData(ab);
+      } catch (_) {}
+    }));
+  }
 
   // ─── Pre-render всех звуков ───────────────────────────────────
   async _preloadAll() {
@@ -303,13 +322,29 @@ export class AudioManager {
   // ─── Публичные методы воспроизведения ────────────────────────
   playNoise() {
     this._play('noise');
-    this._speakPlayer();
+    // MP3 крик игрока, fallback — синтезированный голос
+    const mp3 = Math.random() < 0.5 ? 'player_1' : 'player_2';
+    if (this._buffers[mp3]) this._play(mp3);
+    else this._speakPlayer();
   }
-  playManiacHear() { this._play('growl'); }
-  playEnraged()    { this._play('enraged'); }
-  playStep()       { this._play('step'); }
-  playWin()        { this._play('win'); }
-  playLose()       { this._play('lose'); }
+
+  playManiacHear() {
+    // Один из трёх MP3 маньяка случайно, fallback — синтезированный рык
+    const names = ['maniac_1', 'maniac_2', 'maniac_3'];
+    const mp3   = names[Math.floor(Math.random() * names.length)];
+    if (this._buffers[mp3]) this._play(mp3);
+    else this._play('growl');
+  }
+
+  playEnraged() {
+    // Для ярости maniac_3 + синтезированный рёв поверх
+    if (this._buffers['maniac_3']) this._play('maniac_3');
+    this._play('enraged');
+  }
+
+  playStep()  { this._play('step'); }
+  playWin()   { this._play('win'); }
+  playLose()  { this._play('lose'); }
 
   playHeartbeat(proximity = 1) {
     this._play('heartbeat', 0.3 + proximity * 0.5);

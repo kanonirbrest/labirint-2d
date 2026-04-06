@@ -25,7 +25,18 @@ function showScreen(name) {
   });
 }
 
-showScreen('lobby');
+// ─── Авто-подключение по ссылке (?room=XXXXXX) ─────────────────
+const _urlRoom = new URLSearchParams(window.location.search).get('room');
+if (_urlRoom) {
+  document.getElementById('room-code-input').value = _urlRoom.toUpperCase();
+  showScreen('lobby');
+  // Небольшая задержка чтобы UI успел отрисоваться
+  setTimeout(() => {
+    connectAndDo(() => send('joinRoom', { roomCode: _urlRoom.toUpperCase(), username: defaultName }));
+  }, 300);
+} else {
+  showScreen('lobby');
+}
 
 // ─── Состояние ─────────────────────────────────────────────────
 let game = null;
@@ -91,6 +102,35 @@ document.getElementById('btn-cancel-wait').addEventListener('click', () => {
   showScreen('lobby');
 });
 
+document.getElementById('btn-copy-link').addEventListener('click', () => {
+  const link = document.getElementById('btn-copy-link').dataset.link;
+  if (!link) return;
+  navigator.clipboard?.writeText(link)
+    .then(() => showCopyToast('✅ Ссылка скопирована!'))
+    .catch(() => {
+      // fallback для браузеров без clipboard API
+      prompt('Скопируйте ссылку:', link);
+    });
+});
+
+function showCopyToast(msg) {
+  const el = document.getElementById('copy-toast');
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+function setJoinLink(roomCode) {
+  const url = new URL(window.location.href);
+  url.search = `?room=${roomCode}`;
+  // убираем лишние параметры
+  const link = url.toString();
+  document.getElementById('btn-copy-link').dataset.link = link;
+  // Копируем автоматически при создании
+  navigator.clipboard?.writeText(link)
+    .then(() => showCopyToast('✅ Ссылка скопирована автоматически!'))
+    .catch(() => {});
+}
+
 // ─── Утилиты ───────────────────────────────────────────────────
 function connectAndDo(action) {
   setupSocketHandlers();
@@ -150,6 +190,7 @@ function setupSocketHandlers() {
 
   on('roomCreated', ({ roomCode }) => {
     document.getElementById('display-room-code').textContent = roomCode;
+    setJoinLink(roomCode);
     showScreen('waiting');
   });
 

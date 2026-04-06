@@ -445,10 +445,14 @@
   <div class="logo-sub" style="font-size:0.9rem;">Ждём второго игрока...</div>
   <div class="room-code-display" id="display-room-code">------</div>
   <div class="waiting-hint">
-    Поделитесь кодом с другом<br/>
+    Поделитесь ссылкой с другом<br/>
     <span class="pulse-dot"></span> Ожидание подключения
   </div>
-  <button class="btn btn-secondary" id="btn-cancel-wait" style="max-width:200px;margin-top:10px;">Отмена</button>
+  <button class="btn" id="btn-copy-link" style="max-width:280px;margin-top:4px;background:var(--accent);gap:8px;">
+    🔗 Скопировать ссылку
+  </button>
+  <div id="copy-toast" style="font-size:0.8rem;color:#81c784;min-height:1.2em;margin-top:4px;"></div>
+  <button class="btn btn-secondary" id="btn-cancel-wait" style="max-width:200px;margin-top:6px;">Отмена</button>
 </div>
 
 <!-- ИГРА -->
