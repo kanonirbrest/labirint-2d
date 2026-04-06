@@ -38,6 +38,7 @@ export class AudioManager {
       ['win',       1.4,       (ctx) => this._buildWin(ctx)],
       ['lose',      2.0 + 1.0, (ctx) => this._buildLose(ctx)],
       ['breath',    0.6 + 1.5, (ctx) => this._buildBreath(ctx)],
+      ['enraged',   1.8 + 2.0, (ctx) => this._buildEnraged(ctx)],
     ];
 
     await Promise.all(jobs.map(async ([name, dur, fn]) => {
@@ -176,6 +177,58 @@ export class AudioManager {
     osc.start(now); osc.stop(now + dur);
   }
 
+  _buildEnraged(ctx) {
+    const now = 0, dur = 1.8;
+    const rev = _reverbOffline(ctx, 2.2);
+
+    // Мощный нарастающий рёв
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(60, now);
+    osc1.frequency.linearRampToValueAtTime(140, now + 0.3);
+    osc1.frequency.linearRampToValueAtTime(55, now + dur);
+
+    const dist1 = ctx.createWaveShaper();
+    dist1.curve = distortionCurve(400);
+    dist1.oversample = '4x';
+
+    const gain1 = ctx.createGain();
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.7, now + 0.15);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    osc1.connect(dist1);
+    dist1.connect(rev); rev.connect(gain1);
+    dist1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now); osc1.stop(now + dur);
+
+    // Высокочастотный скрим поверх
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(320, now + 0.1);
+    osc2.frequency.linearRampToValueAtTime(180, now + 0.6);
+    const dist2 = ctx.createWaveShaper();
+    dist2.curve = distortionCurve(300);
+    const gain2 = ctx.createGain();
+    gain2.gain.setValueAtTime(0, now + 0.1);
+    gain2.gain.linearRampToValueAtTime(0.35, now + 0.25);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc2.connect(dist2); dist2.connect(gain2); gain2.connect(ctx.destination);
+    osc2.start(now + 0.1); osc2.stop(now + 0.8);
+
+    // Удар (низкий бум)
+    const osc3 = ctx.createOscillator();
+    osc3.type = 'sine';
+    osc3.frequency.setValueAtTime(80, now);
+    osc3.frequency.exponentialRampToValueAtTime(30, now + 0.4);
+    const gain3 = ctx.createGain();
+    gain3.gain.setValueAtTime(0.9, now);
+    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc3.connect(gain3); gain3.connect(ctx.destination);
+    osc3.start(now); osc3.stop(now + 0.4);
+  }
+
   _buildBreath(ctx) {
     const now = 0, dur = 0.55;
     const rev = _reverbOffline(ctx, 1.5);
@@ -253,6 +306,7 @@ export class AudioManager {
     this._speakPlayer();
   }
   playManiacHear() { this._play('growl'); }
+  playEnraged()    { this._play('enraged'); }
   playStep()       { this._play('step'); }
   playWin()        { this._play('win'); }
   playLose()       { this._play('lose'); }

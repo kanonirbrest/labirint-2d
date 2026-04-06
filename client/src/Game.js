@@ -94,6 +94,22 @@ export class Game {
   playWin()  { this.audio.playWin(); }
   playLose() { this.audio.playLose(); }
 
+  onManiacEnraged() {
+    if (this.state?.maniac) this.state.maniac.enraged = true;
+    this.audio.playEnraged();
+    this.audio.speakManiac('Я вас найду!!!');
+  }
+
+  onManiacCalmDown() {
+    if (this.state?.maniac) this.state.maniac.enraged = false;
+  }
+
+  applyWallBroken({ x, y, dir, nx, ny, oppDir }) {
+    if (!this.state?.maze) return;
+    if (this.state.maze[y]?.[x])   this.state.maze[y][x][dir]    = false;
+    if (this.state.maze[ny]?.[nx]) this.state.maze[ny][nx][oppDir] = false;
+  }
+
   _startPathHintTimer() {
     if (this.pathHintInterval) clearInterval(this.pathHintInterval);
     this.pathHintInterval = setInterval(() => this._showPathHint(), 5000);

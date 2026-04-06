@@ -512,12 +512,16 @@ export class Renderer {
     const { maniac } = state;
     const cx = maniac.vx, cy = maniac.vy;
     const isChasing = maniac.state === 'chasing';
+    const isEnraged = maniac.enraged === true;
     const t = Date.now() / 1000;
 
     ctx.save();
 
-    // Частицы ярости при погоне
-    if (isChasing) this._drawRageParticles(ctx, cx, cy, t);
+    // Огненное свечение в режиме ярости
+    if (isEnraged) this._drawRageFire(ctx, cx, cy, t);
+
+    // Частицы ярости при погоне (или ярости)
+    if (isChasing || isEnraged) this._drawRageParticles(ctx, cx, cy, t, isEnraged);
 
     // ── Ноги ──
     ctx.fillStyle = '#1a1a1a';
@@ -530,22 +534,24 @@ export class Renderer {
     ctx.fillRect(cx,      cy + 20, 11, 5);
 
     // ── Широкие плечи / пальто ──
-    const bodyColor = isChasing ? '#3a0505' : '#141414';
+    const bodyColor = isEnraged ? '#8b0000' : isChasing ? '#3a0505' : '#141414';
     ctx.fillStyle = bodyColor;
     ctx.fillRect(cx - 15, cy - 14, 30, 24); // широкое тело
     ctx.fillRect(cx - 18, cy - 14, 36, 8);  // плечи
 
     // ── Топор ──
-    const axeSway = isChasing
-      ? Math.sin(t * 9) * 6
-      : Math.sin(t * 1.5) * 3;
+    const axeSway = isEnraged
+      ? Math.sin(t * 14) * 10
+      : isChasing
+        ? Math.sin(t * 9) * 6
+        : Math.sin(t * 1.5) * 3;
 
     // Рукоять
     ctx.fillStyle = '#5d4037';
     ctx.fillRect(cx + 15, cy - 24 + axeSway, 5, 28);
 
     // Лезвие
-    ctx.fillStyle = isChasing ? '#b71c1c' : '#9e9e9e';
+    ctx.fillStyle = isEnraged ? '#ff1100' : isChasing ? '#b71c1c' : '#9e9e9e';
     ctx.fillRect(cx + 13, cy - 36 + axeSway, 16, 16);
 
     // Блеск лезвия
@@ -601,17 +607,46 @@ export class Renderer {
     ctx.restore();
   }
 
-  _drawRageParticles(ctx, cx, cy, t) {
-    for (let i = 0; i < 10; i++) {
-      const angle = (i / 10) * Math.PI * 2 + t * 2.5;
-      const dist  = 26 + Math.sin(t * 4 + i * 0.9) * 10;
+  _drawRageParticles(ctx, cx, cy, t, intense = false) {
+    const count = intense ? 18 : 10;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + t * (intense ? 4 : 2.5);
+      const dist  = (intense ? 34 : 26) + Math.sin(t * 4 + i * 0.9) * 10;
       const px    = cx + Math.cos(angle) * dist;
       const py    = cy + Math.sin(angle) * dist;
-      const size  = 2.5 + Math.sin(t * 6 + i * 0.6) * 1.5;
-      const alpha = 0.5 + Math.sin(t * 5 + i) * 0.3;
-
-      ctx.fillStyle = `rgba(239,83,80,${alpha})`;
+      const size  = (intense ? 4 : 2.5) + Math.sin(t * 6 + i * 0.6) * 1.5;
+      const alpha = 0.6 + Math.sin(t * 5 + i) * 0.3;
+      ctx.fillStyle = intense ? `rgba(255,60,0,${alpha})` : `rgba(239,83,80,${alpha})`;
       ctx.fillRect(px - size / 2, py - size / 2, size, size);
+    }
+  }
+
+  // Огненное свечение вокруг маньяка в ярости
+  _drawRageFire(ctx, cx, cy, t) {
+    // Пульсирующий красный ореол
+    const pulse = 0.55 + Math.sin(t * 8) * 0.2;
+    const r1 = 42 + Math.sin(t * 6) * 6;
+    const grd = ctx.createRadialGradient(cx, cy, 4, cx, cy, r1);
+    grd.addColorStop(0,   `rgba(255,40,0,${pulse})`);
+    grd.addColorStop(0.5, `rgba(200,0,0,${pulse * 0.5})`);
+    grd.addColorStop(1,   'rgba(120,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r1, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // Языки пламени (вверх)
+    for (let i = 0; i < 6; i++) {
+      const ox  = cx + (i - 2.5) * 8;
+      const ht  = 18 + Math.sin(t * 9 + i * 1.3) * 8;
+      const pha = 0.4 + Math.sin(t * 7 + i) * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(ox - 5, cy - 18);
+      ctx.quadraticCurveTo(ox + Math.sin(t * 5 + i) * 6, cy - 18 - ht / 2, ox, cy - 18 - ht);
+      ctx.quadraticCurveTo(ox + 4, cy - 18 - ht / 2, ox + 5, cy - 18);
+      ctx.closePath();
+      ctx.fillStyle = i % 2 === 0 ? `rgba(255,120,0,${pha})` : `rgba(255,40,0,${pha})`;
+      ctx.fill();
     }
   }
 

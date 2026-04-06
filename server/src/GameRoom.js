@@ -128,8 +128,13 @@ export class GameRoom {
       targetX: null,
       targetY: null,
       chaseExpiry: null,
-      confusedSteps: 0,       // сколько случайных шагов осталось
-      lastConfusionCheck: 0,  // когда последний раз проверяли путаницу
+      confusedSteps: 0,
+      lastConfusionCheck: 0,
+      // Rage-механика
+      noiseHeardCount: 0,     // сколько раз подряд услышал шум
+      enraged: false,         // в режиме ярости
+      enragedUntil: null,     // до какого времени
+      wallsCanBreak: 0,       // сколько стен ещё может сломать
     };
 
     this.gameState = 'playing';
@@ -184,7 +189,21 @@ export class GameRoom {
 
   moveManiac() {
     const now = Date.now();
-    const { mazeW, mazeH } = this.cfg;
+
+    // Сброс ярости по таймеру
+    if (this.maniac.enraged && now > this.maniac.enragedUntil) {
+      this.maniac.enraged       = false;
+      this.maniac.enragedUntil  = null;
+      this.maniac.wallsCanBreak = 0;
+      this.maniac.noiseHeardCount = 0;
+      this.io.to(this.roomCode).emit('maniacCalmDown');
+    }
+
+    // В режиме ярости — ломает стены и идёт напрямую
+    if (this.maniac.enraged) {
+      this._rageMove();
+      return;
+    }
 
     if (this.maniac.state === 'chasing' && this.maniac.chaseExpiry && now > this.maniac.chaseExpiry) {
       this.maniac.state = 'searching';
@@ -209,6 +228,69 @@ export class GameRoom {
       }
     } else {
       this.wander();
+    }
+  }
+
+  // Движение в ярости — идёт напрямую к ближайшему игроку, ломает стены
+  _rageMove() {
+    const { mazeW, mazeH } = this.cfg;
+    const targets = [...this.players.values()].filter((p) => !p.escaped);
+    if (!targets.length) return;
+
+    // Ближайший игрок (по манхэттенскому расстоянию)
+    const nearest = targets.reduce((a, b) =>
+      (Math.abs(a.x - this.maniac.x) + Math.abs(a.y - this.maniac.y)) <=
+      (Math.abs(b.x - this.maniac.x) + Math.abs(b.y - this.maniac.y)) ? a : b
+    );
+
+    const dx = nearest.x - this.maniac.x;
+    const dy = nearest.y - this.maniac.y;
+
+    // Выбираем ось движения — сначала большую разницу
+    const dirs = [];
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      if (dx !== 0) dirs.push(dx > 0 ? 'e' : 'w');
+      if (dy !== 0) dirs.push(dy > 0 ? 's' : 'n');
+    } else {
+      if (dy !== 0) dirs.push(dy > 0 ? 's' : 'n');
+      if (dx !== 0) dirs.push(dx > 0 ? 'e' : 'w');
+    }
+
+    const DEL = { n:{dx:0,dy:-1}, e:{dx:1,dy:0}, s:{dx:0,dy:1}, w:{dx:-1,dy:0} };
+    const OPP = { n:'s', e:'w', s:'n', w:'e' };
+
+    for (const dir of dirs) {
+      const { dx: ddx, dy: ddy } = DEL[dir];
+      const nx = this.maniac.x + ddx;
+      const ny = this.maniac.y + ddy;
+      if (nx < 0 || nx >= mazeW || ny < 0 || ny >= mazeH) continue;
+
+      const cell = this.maze[this.maniac.y][this.maniac.x];
+      if (cell[dir]) {
+        // Стена — ломаем если есть заряды
+        if (this.maniac.wallsCanBreak > 0) {
+          cell[dir] = false;
+          this.maze[ny][nx][OPP[dir]] = false;
+          this.maniac.wallsCanBreak--;
+          this.io.to(this.roomCode).emit('wallBroken', {
+            x: this.maniac.x, y: this.maniac.y, dir,
+            nx, ny, oppDir: OPP[dir],
+          });
+        } else {
+          continue; // зарядов нет — пробуем другое направление
+        }
+      }
+
+      this.maniac.x = nx;
+      this.maniac.y = ny;
+      return;
+    }
+
+    // Если напрямую не получается — BFS
+    const path = findPath(this.maze, { x: this.maniac.x, y: this.maniac.y }, nearest);
+    if (path && path.length > 1) {
+      this.maniac.x = path[1].x;
+      this.maniac.y = path[1].y;
     }
   }
 
@@ -350,10 +432,23 @@ export class GameRoom {
     });
 
     if (heard) {
-      this.maniac.state = 'chasing';
+      this.maniac.state   = 'chasing';
       this.maniac.targetX = player.x;
       this.maniac.targetY = player.y;
       this.maniac.chaseExpiry = now + this.cfg.chaseDuration;
+
+      // Rage: считаем услышанные шумы подряд
+      this.maniac.noiseHeardCount = (this.maniac.noiseHeardCount || 0) + 1;
+
+      if (this.maniac.noiseHeardCount >= 3 && !this.maniac.enraged) {
+        this.maniac.enraged       = true;
+        this.maniac.enragedUntil  = now + 10000; // 10 секунд ярости
+        this.maniac.wallsCanBreak = 3;            // может сломать до 3 стен
+        this.maniac.noiseHeardCount = 0;
+        this.io.to(this.roomCode).emit('maniacEnraged', {
+          x: this.maniac.x, y: this.maniac.y,
+        });
+      }
     }
   }
 
@@ -397,6 +492,12 @@ export class GameRoom {
   }
 
   serializeManiac() {
-    return { x: this.maniac.x, y: this.maniac.y, state: this.maniac.state };
+    return {
+      x: this.maniac.x,
+      y: this.maniac.y,
+      state: this.maniac.state,
+      enraged: this.maniac.enraged || false,
+      wallsCanBreak: this.maniac.wallsCanBreak || 0,
+    };
   }
 }

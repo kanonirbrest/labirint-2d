@@ -182,6 +182,19 @@ function setupSocketHandlers() {
     if (data.heard) pulseHudAlert('😱 Маньяк услышал шум!', 2500);
   });
 
+  on('maniacEnraged', () => {
+    game?.onManiacEnraged();
+    pulseHudAlert('🔥 МАНЬЯК В ЯРОСТИ — он ломает стены!', 4000, '#ff2200');
+  });
+
+  on('maniacCalmDown', () => {
+    game?.onManiacCalmDown();
+  });
+
+  on('wallBroken', (data) => {
+    game?.applyWallBroken(data);
+  });
+
   on('playerEscaped', ({ playerId }) => {
     game?.applyPlayerEscaped(playerId);
     const isMe = playerId === getSocketId();
@@ -218,8 +231,13 @@ function showGameOver(won, customSub) {
 }
 
 let hudAlertTimer = null;
-function pulseHudAlert(text, duration) {
+function pulseHudAlert(text, duration, color) {
   clearTimeout(hudAlertTimer);
-  setHudStatus(text);
-  hudAlertTimer = setTimeout(() => setHudStatus('🏃 Бегите!'), duration);
+  const el = document.getElementById('hud-status');
+  el.textContent = text;
+  if (color) el.style.color = color;
+  hudAlertTimer = setTimeout(() => {
+    setHudStatus('🏃 Бегите!');
+    el.style.color = '';
+  }, duration);
 }
