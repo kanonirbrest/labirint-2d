@@ -98,7 +98,6 @@ export class Game {
   onManiacEnraged() {
     if (this.state?.maniac) this.state.maniac.enraged = true;
     this.audio.playEnraged();
-    this.audio.speakManiac('Я вас найду!!!');
   }
 
   onManiacCalmDown() {
@@ -181,8 +180,6 @@ export class Game {
       const text = phrases[Math.floor(Math.random() * phrases.length)];
       this.maniacSpeech = { text, createdAt: Date.now(), duration: 3000 };
       this.audio.playManiacHear();
-      // Небольшая задержка чтобы звук не перекрывал эффект шума
-      setTimeout(() => this.audio.speakManiac(text), 400);
     }
   }
 

@@ -1,8 +1,7 @@
 /**
  * AudioManager
  * Все звуки pre-render'ятся в AudioBuffer при старте через OfflineAudioContext.
- * Воспроизведение — мгновенное (createBufferSource без синтеза в реальном времени).
- * Голос маньяка — Web Speech API с pre-warm при первом взаимодействии.
+ * Голоса игрока и маньяка — MP3-файлы из /sounds/.
  */
 export class AudioManager {
   constructor() {
@@ -11,9 +10,9 @@ export class AudioManager {
     this.muted   = false;
     this.ambientNodes   = null;
     this._lastHeartbeat = 0;
-    this._buffers       = {};   // { name: AudioBuffer }
-    this._speechWarmedUp = false;
-    this._ruVoice        = null;
+    this._buffers       = {};
+    this._ambientTimer  = null;
+    this._ambientPlaying = false;
 
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -25,8 +24,6 @@ export class AudioManager {
     this._preloadAll();
     this._loadMp3s();
     this._loadAmbients();
-    this._initVoices();
-    this._ambientTimer = null;
   }
 
   get active() { return this.enabled && !this.muted && !!this.ctx; }
@@ -400,18 +397,9 @@ export class AudioManager {
   // ─── Публичные методы воспроизведения ────────────────────────
   playNoise() {
     this._play('noise');
-    // MP3 крик игрока, fallback — синтезированный голос
+    // MP3 крик игрока
     const mp3 = Math.random() < 0.5 ? 'player_1' : 'player_2';
-    if (this._buffers[mp3]) {
-      // Запоминаем когда закончится голос игрока (+300мс паузы после)
-      const dur = this._buffers[mp3].duration * 1000;
-      this._playerVoiceEnd = Date.now() + dur + 300;
-      this._play(mp3);
-    } else {
-      this._speakPlayer();
-      // TTS занимает ~2 секунды — оцениваем
-      this._playerVoiceEnd = Date.now() + 2200;
-    }
+    this._play(mp3);
   }
 
   playManiacHear() {
@@ -475,76 +463,6 @@ export class AudioManager {
     this.ambientNodes = null;
   }
 
-  // ─── Крик игрока при нажатии «Шум» ──────────────────────────
-  _speakPlayer() {
-    if (this.muted || !window.speechSynthesis) return;
-    const phrases = [
-      'Эй, иди сюда!',
-      'Я здесь!',
-      'Иди ко мне!',
-    ];
-    const text = phrases[Math.floor(Math.random() * phrases.length)];
-    try {
-      window.speechSynthesis.cancel();
-      const u    = new SpeechSynthesisUtterance(text);
-      u.lang     = 'ru-RU';
-      u.rate     = 1.05;   // чуть быстрее — взволнованный голос
-      u.pitch    = 1.3;    // выше нормы — испуг
-      u.volume   = 1.0;
-      if (this._ruVoice) u.voice = this._ruVoice;
-      u.onerror  = () => {};
-      window.speechSynthesis.speak(u);
-    } catch (_) {}
-  }
-
-  // ─── Речь маньяка ────────────────────────────────────────────
-  speakManiac(text) {
-    if (this.muted || !window.speechSynthesis) return;
-
-    // Ждём пока игрок договорит — маньяк не перебивает
-    const waitMs = Math.max(0, (this._playerVoiceEnd || 0) - Date.now());
-    if (waitMs > 0) {
-      setTimeout(() => this.speakManiac(text), waitMs);
-      return;
-    }
-
-    try {
-      // Сначала хриплое дыхание из кэша — мгновенно
-      this._play('breath');
-
-      window.speechSynthesis.cancel();
-
-      // Голос через 480мс (после вздоха)
-      setTimeout(() => {
-        try {
-          const u    = new SpeechSynthesisUtterance(text);
-          u.lang     = 'ru-RU';
-          u.rate     = 0.6;
-          u.pitch    = 0.1;
-          u.volume   = 1.0;
-          if (this._ruVoice) u.voice = this._ruVoice;
-          u.onerror  = () => {};
-
-          // Тихое эхо после основной фразы
-          u.onend = () => {
-            try {
-              const echo  = new SpeechSynthesisUtterance(text);
-              echo.lang   = 'ru-RU';
-              echo.rate   = 0.5;
-              echo.pitch  = 0.1;
-              echo.volume = 0.14;
-              if (this._ruVoice) echo.voice = this._ruVoice;
-              echo.onerror = () => {};
-              window.speechSynthesis.speak(echo);
-            } catch (_) {}
-          };
-
-          window.speechSynthesis.speak(u);
-        } catch (_) {}
-      }, 480);
-    } catch (_) {}
-  }
-
   // ─── Сердцебиение в игровом цикле ────────────────────────────
   tickHeartbeat(maniac, myPlayer) {
     if (!myPlayer || myPlayer.escaped) return;
@@ -565,15 +483,6 @@ export class AudioManager {
   // ─── Утилиты ──────────────────────────────────────────────────
   resume() {
     if (this.ctx?.state === 'suspended') this.ctx.resume();
-    // Pre-warm TTS при первом взаимодействии (нужно после user gesture)
-    if (!this._speechWarmedUp && window.speechSynthesis) {
-      this._speechWarmedUp = true;
-      try {
-        const u = new SpeechSynthesisUtterance(' ');
-        u.volume = 0; u.rate = 2;
-        window.speechSynthesis.speak(u);
-      } catch (_) {}
-    }
   }
 
   toggleMute() {
@@ -581,7 +490,6 @@ export class AudioManager {
     if (this.muted) {
       this.stopAmbient();
       this._stopAmbientSounds();
-      window.speechSynthesis?.cancel();
     } else {
       this.startAmbient();
       this.startAmbientSounds();
@@ -592,18 +500,6 @@ export class AudioManager {
   stop() {
     this.stopAmbient();
     this._stopAmbientSounds();
-    window.speechSynthesis?.cancel();
-  }
-
-  _initVoices() {
-    const pick = () => {
-      const voices   = window.speechSynthesis?.getVoices() ?? [];
-      this._ruVoice  = voices.find((v) => v.lang.startsWith('ru') && /male/i.test(v.name))
-                    || voices.find((v) => v.lang.startsWith('ru'))
-                    || null;
-    };
-    pick();
-    window.speechSynthesis?.addEventListener('voiceschanged', pick);
   }
 }
 
