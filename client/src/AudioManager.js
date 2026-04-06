@@ -24,7 +24,9 @@ export class AudioManager {
 
     this._preloadAll();
     this._loadMp3s();
+    this._loadAmbients();
     this._initVoices();
+    this._ambientTimer = null;
   }
 
   get active() { return this.enabled && !this.muted && !!this.ctx; }
@@ -45,6 +47,67 @@ export class AudioManager {
         this._buffers[name] = await this.ctx.decodeAudioData(ab);
       } catch (_) {}
     }));
+  }
+
+  // ─── Загрузка фоновых амбиент-звуков ─────────────────────────
+  async _loadAmbients() {
+    const files = {
+      amb_laugh: '/sounds/ambient_laugh.m4a',
+      amb_rage:  '/sounds/ambient_rage.m4a',
+      amb_howl:  '/sounds/ambient_howl.m4a',
+      amb_steps: '/sounds/ambient_steps.m4a',
+    };
+    await Promise.all(Object.entries(files).map(async ([name, url]) => {
+      try {
+        const res  = await fetch(url);
+        const ab   = await res.arrayBuffer();
+        this._buffers[name] = await this.ctx.decodeAudioData(ab);
+      } catch (_) {}
+    }));
+  }
+
+  // Запустить случайные фоновые звуки во время игры
+  startAmbientSounds() {
+    this._stopAmbientSounds();
+    this._scheduleAmbient();
+  }
+
+  _scheduleAmbient() {
+    // Следующий фоновый звук через 12–28 секунд
+    const delay = 12000 + Math.random() * 16000;
+    this._ambientTimer = setTimeout(() => {
+      if (!this.muted) this._playRandomAmbient();
+      this._scheduleAmbient();
+    }, delay);
+  }
+
+  _playRandomAmbient() {
+    const pool = ['amb_laugh', 'amb_rage', 'amb_howl', 'amb_steps']
+      .filter((k) => !!this._buffers[k]);
+    if (!pool.length || !this.active) return;
+
+    const name = pool[Math.floor(Math.random() * pool.length)];
+    const buf  = this._buffers[name];
+    try {
+      this.resume();
+      const src  = this.ctx.createBufferSource();
+      src.buffer = buf;
+
+      // Очень тихо — фоновый шум, не должен перебивать основные звуки
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0.18;
+
+      src.connect(gain);
+      gain.connect(this.ctx.destination);
+      src.start(this.ctx.currentTime);
+    } catch (_) {}
+  }
+
+  _stopAmbientSounds() {
+    if (this._ambientTimer) {
+      clearTimeout(this._ambientTimer);
+      this._ambientTimer = null;
+    }
   }
 
   // ─── Pre-render всех звуков ───────────────────────────────────
@@ -484,13 +547,20 @@ export class AudioManager {
 
   toggleMute() {
     this.muted = !this.muted;
-    if (this.muted) { this.stopAmbient(); window.speechSynthesis?.cancel(); }
-    else            { this.startAmbient(); }
+    if (this.muted) {
+      this.stopAmbient();
+      this._stopAmbientSounds();
+      window.speechSynthesis?.cancel();
+    } else {
+      this.startAmbient();
+      this.startAmbientSounds();
+    }
     return this.muted;
   }
 
   stop() {
     this.stopAmbient();
+    this._stopAmbientSounds();
     window.speechSynthesis?.cancel();
   }
 

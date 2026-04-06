@@ -69,6 +69,7 @@ export class Game {
     this.maniacSpeech = null;
     this._startPathHintTimer();
     this.audio.startAmbient();
+    this.audio.startAmbientSounds();
     this.updateNoiseBtn();
     this.startLoop();
   }
