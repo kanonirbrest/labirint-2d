@@ -402,8 +402,16 @@ export class AudioManager {
     this._play('noise');
     // MP3 крик игрока, fallback — синтезированный голос
     const mp3 = Math.random() < 0.5 ? 'player_1' : 'player_2';
-    if (this._buffers[mp3]) this._play(mp3);
-    else this._speakPlayer();
+    if (this._buffers[mp3]) {
+      // Запоминаем когда закончится голос игрока (+300мс паузы после)
+      const dur = this._buffers[mp3].duration * 1000;
+      this._playerVoiceEnd = Date.now() + dur + 300;
+      this._play(mp3);
+    } else {
+      this._speakPlayer();
+      // TTS занимает ~2 секунды — оцениваем
+      this._playerVoiceEnd = Date.now() + 2200;
+    }
   }
 
   playManiacHear() {
@@ -492,6 +500,14 @@ export class AudioManager {
   // ─── Речь маньяка ────────────────────────────────────────────
   speakManiac(text) {
     if (this.muted || !window.speechSynthesis) return;
+
+    // Ждём пока игрок договорит — маньяк не перебивает
+    const waitMs = Math.max(0, (this._playerVoiceEnd || 0) - Date.now());
+    if (waitMs > 0) {
+      setTimeout(() => this.speakManiac(text), waitMs);
+      return;
+    }
+
     try {
       // Сначала хриплое дыхание из кэша — мгновенно
       this._play('breath');
