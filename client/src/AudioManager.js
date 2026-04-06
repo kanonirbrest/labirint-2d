@@ -407,13 +407,23 @@ export class AudioManager {
   }
 
   playManiacHear() {
-    // Ждём пока игрок замолчит, потом маньяк отвечает
+    // Не запускаем пока предыдущая фраза ещё звучит
+    if (this._maniacSpeaking) return;
+
     const waitMs = Math.max(0, (this._playerVoiceEnd || 0) - Date.now());
     const run = () => {
+      if (this._maniacSpeaking) return; // повторная проверка после задержки
       const names = ['maniac_1', 'maniac_2', 'maniac_3'];
       const mp3   = names[Math.floor(Math.random() * names.length)];
-      if (this._buffers[mp3]) this._play(mp3);
-      else this._play('growl');
+      const buf   = this._buffers[mp3];
+      if (buf) {
+        this._maniacSpeaking = true;
+        // Сбрасываем флаг когда звук закончится
+        setTimeout(() => { this._maniacSpeaking = false; }, buf.duration * 1000 + 600);
+        this._play(mp3);
+      } else {
+        this._play('growl');
+      }
     };
     if (waitMs > 0) setTimeout(run, waitMs);
     else run();
