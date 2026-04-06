@@ -409,19 +409,21 @@ export class AudioManager {
   playManiacHear() {
     // Не запускаем пока предыдущая фраза ещё звучит
     if (this._maniacSpeaking) return;
+    // Блокируем сразу — до любого setTimeout, чтобы параллельные вызовы не прошли
+    this._maniacSpeaking = true;
 
     const waitMs = Math.max(0, (this._playerVoiceEnd || 0) - Date.now());
     const run = () => {
-      if (this._maniacSpeaking) return; // повторная проверка после задержки
       const names = ['maniac_1', 'maniac_2', 'maniac_3'];
       const mp3   = names[Math.floor(Math.random() * names.length)];
       const buf   = this._buffers[mp3];
       if (buf) {
-        this._maniacSpeaking = true;
         // Сбрасываем флаг когда звук закончится
         setTimeout(() => { this._maniacSpeaking = false; }, buf.duration * 1000 + 600);
         this._play(mp3);
       } else {
+        // MP3 ещё не загружен — играем синтез и сразу разблокируем
+        this._maniacSpeaking = false;
         this._play('growl');
       }
     };
