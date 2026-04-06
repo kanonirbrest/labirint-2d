@@ -29,7 +29,7 @@ const DIFFICULTY = {
     tickMs: 100,
     maniacMoveTicks: 5,    // 500ms/шаг — +15% скорости
     playerMoveCooldown: 280,
-    noiseRadius: 10,       // +20% радиус
+    noiseRadius: 15,
     noiseCooldown: 6000,
     chaseDuration: 14000,
     maniacWanderRandomness: 0.10,
